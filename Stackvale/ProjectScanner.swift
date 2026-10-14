@@ -26,6 +26,10 @@ struct ServiceDraft: Identifiable, Equatable {
 
     func makeService(projectID: UUID, existingID: UUID? = nil) -> ServiceDefinition {
         let trimmedCommand = commandDisplay.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedComposeFile = composeFile?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedComposeService = composeService?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedComposeFile = trimmedComposeFile.flatMap { $0.isEmpty ? nil : $0 }
+        let resolvedComposeService = trimmedComposeService.flatMap { $0.isEmpty ? nil : $0 }
         let resolvedExecutable: String?
         let resolvedArguments: [String]
 
@@ -55,8 +59,8 @@ struct ServiceDraft: Identifiable, Equatable {
             commandExecutable: resolvedExecutable,
             commandArguments: resolvedArguments,
             commandDisplay: trimmedCommand,
-            composeFile: composeFile,
-            composeService: composeService,
+            composeFile: resolvedComposeFile,
+            composeService: resolvedComposeService,
             displayPort: displayPort,
             iconCategory: iconCategory
         )
@@ -382,7 +386,11 @@ enum CommandRunner {
 
                 do {
                     try process.run()
-                    process.waitUntilExit()
+                    guard waitUntilExit(process, timeout: 10) else {
+                        process.terminate()
+                        continuation.resume(returning: CommandResult(exitCode: 124, output: "", error: "Command timed out."))
+                        return
+                    }
                     let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
                     let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
                     continuation.resume(returning: CommandResult(exitCode: process.terminationStatus, output: output, error: error))
@@ -391,5 +399,13 @@ enum CommandRunner {
                 }
             }
         }
+    }
+
+    private static func waitUntilExit(_ process: Process, timeout seconds: TimeInterval) -> Bool {
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in semaphore.signal() }
+
+        if !process.isRunning { return true }
+        return semaphore.wait(timeout: .now() + seconds) == .success
     }
 }

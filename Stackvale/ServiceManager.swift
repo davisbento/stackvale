@@ -202,10 +202,15 @@ final class ServiceManager: ObservableObject {
     }
 
     private func runDockerCommand(for service: ServiceDefinition, action: DockerAction) async {
-        guard let composeFile = service.composeFile, let composeService = service.composeService else {
-            setRuntime(service.id, status: .failed, lastError: "Missing Compose file or service name.")
+        guard let composeFile = service.composeFile, !composeFile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            setRuntime(service.id, status: .failed, lastError: "Missing Compose file.")
             return
         }
+        let composeService = service.composeService?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+        let serviceArguments = composeService.map { [$0] } ?? []
+        let serviceDisplay = composeService.map { " \($0)" } ?? ""
 
         let status: RuntimeStatus = action == .start ? .starting : .stopping
         let commandArguments: [String]
@@ -213,11 +218,11 @@ final class ServiceManager: ObservableObject {
 
         switch action {
         case .start:
-            commandArguments = ["docker", "compose", "-f", composeFile, "up", "-d", composeService]
-            commandDisplay = "docker compose -f \"\(composeFile)\" up -d \(composeService)"
+            commandArguments = ["docker", "compose", "-f", composeFile, "up", "-d"] + serviceArguments
+            commandDisplay = "docker compose -f \"\(composeFile)\" up -d\(serviceDisplay)"
         case .stop:
-            commandArguments = ["docker", "compose", "-f", composeFile, "stop", composeService]
-            commandDisplay = "docker compose -f \"\(composeFile)\" stop \(composeService)"
+            commandArguments = ["docker", "compose", "-f", composeFile, "stop"]
+            commandDisplay = "docker compose -f \"\(composeFile)\" stop"
         }
 
         runtimes[service.id] = ServiceRuntime(
@@ -252,8 +257,12 @@ final class ServiceManager: ObservableObject {
     }
 
     private func refreshDockerStatus(_ service: ServiceDefinition) async {
-        guard let composeFile = service.composeFile, let composeService = service.composeService else { return }
-        await refreshDockerStatus(service, probe: DockerComposeProbe(composeFile: composeFile, services: [composeService]))
+        guard let composeFile = service.composeFile else { return }
+        let composeService = service.composeService?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+        let services = composeService.map { [$0] } ?? []
+        await refreshDockerStatus(service, probe: DockerComposeProbe(composeFile: composeFile, services: services))
     }
 
     private func refreshDockerStatusIfAvailable(_ service: ServiceDefinition) async {
@@ -294,8 +303,8 @@ final class ServiceManager: ObservableObject {
     }
 
     private func runInferredDockerStop(for service: ServiceDefinition, probe: DockerComposeProbe) async {
-        let commandArguments = ["docker", "compose", "-f", probe.composeFile, "stop"] + probe.services
-        let commandDisplay = (["docker", "compose", "-f", "\"\(probe.composeFile)\"", "stop"] + probe.services).joined(separator: " ")
+        let commandArguments = ["docker", "compose", "-f", probe.composeFile, "down"]
+        let commandDisplay = "docker compose -f \"\(probe.composeFile)\" down"
 
         runtimes[service.id] = ServiceRuntime(
             serviceId: service.id,

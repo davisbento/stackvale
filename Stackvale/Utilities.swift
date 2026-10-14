@@ -3,6 +3,12 @@ import AppKit
 
 // MARK: - Utilities
 
+extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
 extension ServiceDraft {
     static func manualDefault(workingDirectory: String) -> ServiceDraft {
         ServiceDraft(
@@ -31,13 +37,10 @@ func chooseDirectory(title: String) -> URL? {
 
 @MainActor
 func chooseDirectory(title: String, presentingWindow: NSWindow?) async -> URL? {
-    guard let presentingWindow else {
-        return chooseDirectory(title: title)
-    }
-
     let panel = directoryOpenPanel(title: title)
+    bringOpenPanelToFront(panel)
     return await withCheckedContinuation { continuation in
-        panel.beginSheetModal(for: presentingWindow) { response in
+        panel.begin { response in
             continuation.resume(returning: response == .OK ? panel.url : nil)
         }
     }
@@ -110,7 +113,10 @@ enum UserShellEnvironment {
 
         do {
             try process.run()
-            process.waitUntilExit()
+            guard process.waitUntilExit(timeout: 3) else {
+                process.terminate()
+                return nil
+            }
         } catch {
             return nil
         }
@@ -184,6 +190,16 @@ enum UserShellEnvironment {
     private static func isEnvironmentKey(_ key: String) -> Bool {
         guard let first = key.first, first == "_" || first.isLetter else { return false }
         return key.allSatisfy { $0 == "_" || $0.isLetter || $0.isNumber }
+    }
+}
+
+private extension Process {
+    func waitUntilExit(timeout seconds: TimeInterval) -> Bool {
+        let semaphore = DispatchSemaphore(value: 0)
+        terminationHandler = { _ in semaphore.signal() }
+
+        if !isRunning { return true }
+        return semaphore.wait(timeout: .now() + seconds) == .success
     }
 }
 

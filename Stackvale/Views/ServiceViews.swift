@@ -17,7 +17,6 @@ struct ServiceEditorView: View {
     @State private var workingDirectory: String
     @State private var command: String
     @State private var composeFile: String
-    @State private var composeService: String
     @State private var displayPort: String
     @State private var iconCategory: IconCategory
     @State private var validationMessage: String?
@@ -32,7 +31,6 @@ struct ServiceEditorView: View {
         _workingDirectory = State(initialValue: service?.workingDirectory ?? project?.rootPath ?? NSHomeDirectory())
         _command = State(initialValue: service?.commandDisplay ?? "")
         _composeFile = State(initialValue: service?.composeFile ?? "")
-        _composeService = State(initialValue: service?.composeService ?? "")
         _displayPort = State(initialValue: service?.displayPort.map(String.init) ?? "")
         _iconCategory = State(initialValue: service?.iconCategory ?? .generic)
     }
@@ -80,7 +78,9 @@ struct ServiceEditorView: View {
                                 }
                             }
                         }
-                        TextField("Compose service", text: $composeService)
+                        Text("Runs all services defined in the selected Compose file.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     TextField("Display port (optional)", text: $displayPort)
@@ -175,9 +175,9 @@ struct ServiceEditorView: View {
                 origin: "Manual"
             )
         case .dockerCompose:
-            guard !composeFile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  !composeService.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                validationMessage = "Compose file and service are required."
+            let trimmedComposeFile = composeFile.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedComposeFile.isEmpty else {
+                validationMessage = "Compose file is required."
                 return
             }
             draft = ServiceDraft(
@@ -187,9 +187,9 @@ struct ServiceEditorView: View {
                 source: service?.source ?? .manual,
                 commandExecutable: nil,
                 commandArguments: [],
-                commandDisplay: "docker compose -f \(URL(fileURLWithPath: composeFile).lastPathComponent) up -d \(composeService)",
-                composeFile: composeFile,
-                composeService: composeService,
+                commandDisplay: "docker compose -f \(URL(fileURLWithPath: trimmedComposeFile).lastPathComponent) up -d",
+                composeFile: trimmedComposeFile,
+                composeService: nil,
                 displayPort: port,
                 iconCategory: iconCategory,
                 origin: "Manual"

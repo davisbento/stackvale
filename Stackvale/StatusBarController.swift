@@ -130,6 +130,7 @@ final class StatusBarController: NSObject {
 
         globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in
+                if NSApp.modalWindow is NSOpenPanel { return }
                 self?.closePopover()
             }
         }

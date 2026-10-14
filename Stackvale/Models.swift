@@ -63,8 +63,12 @@ struct ServiceDefinition: Identifiable, Codable, Equatable {
         case .localCommand:
             return commandDisplay
         case .dockerCompose:
-            guard let composeFile, let composeService else { return "docker compose" }
-            return "docker compose -f \"\(composeFile)\" up -d \(composeService)"
+            guard let composeFile else { return "docker compose" }
+            let service = composeService?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty
+            let serviceArgument = service.map { " \($0)" } ?? ""
+            return "docker compose -f \"\(composeFile)\" up -d\(serviceArgument)"
         }
     }
 
