@@ -30,6 +30,7 @@ func chooseDirectory(title: String) -> URL? {
     panel.canChooseFiles = false
     panel.allowsMultipleSelection = false
     panel.canCreateDirectories = false
+    bringOpenPanelToFront(panel)
     return panel.runModal() == .OK ? panel.url : nil
 }
 
@@ -39,7 +40,15 @@ func chooseFile(title: String) -> URL? {
     panel.canChooseDirectories = false
     panel.canChooseFiles = true
     panel.allowsMultipleSelection = false
+    bringOpenPanelToFront(panel)
     return panel.runModal() == .OK ? panel.url : nil
+}
+
+private func bringOpenPanelToFront(_ panel: NSOpenPanel) {
+    NSApplication.shared.activate(ignoringOtherApps: true)
+    panel.level = .floating
+    panel.hidesOnDeactivate = false
+    panel.orderFrontRegardless()
 }
 
 extension String {

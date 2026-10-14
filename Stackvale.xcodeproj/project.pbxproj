@@ -16,6 +16,7 @@
 		A10000000000000000000007 /* ServiceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* ServiceViews.swift */; };
 		A10000000000000000000008 /* ManageProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* ManageProjectsView.swift */; };
 		A10000000000000000000009 /* Utilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* Utilities.swift */; };
+		A1000000000000000000000A /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* StatusBarController.swift */; };
 		8D4F63C02B9F8D0900A10001 /* StackvaleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D4F63BF2B9F8D0900A10001 /* StackvaleApp.swift */; };
 		8D4F63C22B9F8D0900A10001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8D4F63C12B9F8D0900A10001 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -30,6 +31,7 @@
 		A20000000000000000000007 /* ServiceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceViews.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* ManageProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageProjectsView.swift; sourceTree = "<group>"; };
 		A20000000000000000000009 /* Utilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utilities.swift; sourceTree = "<group>"; };
+		A2000000000000000000000A /* StatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarController.swift; sourceTree = "<group>"; };
 		8D4F63B82B9F8D0900A10001 /* Stackvale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stackvale.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8D4F63BF2B9F8D0900A10001 /* StackvaleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackvaleApp.swift; sourceTree = "<group>"; };
 		8D4F63C12B9F8D0900A10001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -81,6 +83,7 @@
 				A20000000000000000000002 /* ProjectStore.swift */,
 				A20000000000000000000003 /* ServiceManager.swift */,
 				A20000000000000000000004 /* ProjectScanner.swift */,
+				A2000000000000000000000A /* StatusBarController.swift */,
 				A20000000000000000000009 /* Utilities.swift */,
 				A30000000000000000000001 /* Views */,
 				8D4F63C12B9F8D0900A10001 /* Assets.xcassets */,
@@ -166,6 +169,7 @@
 				A10000000000000000000007 /* ServiceViews.swift in Sources */,
 				A10000000000000000000008 /* ManageProjectsView.swift in Sources */,
 				A10000000000000000000009 /* Utilities.swift in Sources */,
+				A1000000000000000000000A /* StatusBarController.swift in Sources */,
 				8D4F63C02B9F8D0900A10001 /* StackvaleApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

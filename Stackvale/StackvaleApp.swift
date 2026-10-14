@@ -1,25 +1,29 @@
+import AppKit
 import SwiftUI
 
 // MARK: - App
 
 @main
 struct StackvaleApp: App {
-    @StateObject private var projectStore = ProjectStore()
-    @StateObject private var serviceManager = ServiceManager()
+    @NSApplicationDelegateAdaptor(StackvaleAppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra {
-            StackvaleRootView()
-                .environmentObject(projectStore)
-                .environmentObject(serviceManager)
-                .frame(width: 430)
-                .frame(minHeight: 360)
-        } label: {
-            Image("StackvaleLogo")
-                .resizable()
-                .renderingMode(.original)
-                .scaledToFit()
+        Settings {
+            EmptyView()
         }
-        .menuBarExtraStyle(.window)
+    }
+}
+
+@MainActor
+final class StackvaleAppDelegate: NSObject, NSApplicationDelegate {
+    private let projectStore = ProjectStore()
+    private let serviceManager = ServiceManager()
+    private var statusBarController: StatusBarController?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        statusBarController = StatusBarController(
+            projectStore: projectStore,
+            serviceManager: serviceManager
+        )
     }
 }
