@@ -1,19 +1,25 @@
 import SwiftUI
-import AppKit
+
+// MARK: - App
 
 @main
 struct StackvaleApp: App {
+    @StateObject private var projectStore = ProjectStore()
+    @StateObject private var serviceManager = ServiceManager()
+
     var body: some Scene {
-        MenuBarExtra("Stackvale", systemImage: "tray") {
-            Text("Stackvale")
-
-            Divider()
-
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
-            }
-            .keyboardShortcut("q")
+        MenuBarExtra {
+            StackvaleRootView()
+                .environmentObject(projectStore)
+                .environmentObject(serviceManager)
+                .frame(width: 430)
+                .frame(minHeight: 360)
+        } label: {
+            Image("StackvaleLogo")
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
     }
 }

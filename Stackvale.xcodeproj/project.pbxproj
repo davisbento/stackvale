@@ -7,11 +7,29 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A10000000000000000000001 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* Models.swift */; };
+		A10000000000000000000002 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ProjectStore.swift */; };
+		A10000000000000000000003 /* ServiceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* ServiceManager.swift */; };
+		A10000000000000000000004 /* ProjectScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* ProjectScanner.swift */; };
+		A10000000000000000000005 /* RootViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* RootViews.swift */; };
+		A10000000000000000000006 /* OnboardingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* OnboardingViews.swift */; };
+		A10000000000000000000007 /* ServiceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* ServiceViews.swift */; };
+		A10000000000000000000008 /* ManageProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* ManageProjectsView.swift */; };
+		A10000000000000000000009 /* Utilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* Utilities.swift */; };
 		8D4F63C02B9F8D0900A10001 /* StackvaleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D4F63BF2B9F8D0900A10001 /* StackvaleApp.swift */; };
 		8D4F63C22B9F8D0900A10001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8D4F63C12B9F8D0900A10001 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A20000000000000000000001 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* ServiceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceManager.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* ProjectScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectScanner.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* RootViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootViews.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* OnboardingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViews.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* ServiceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceViews.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* ManageProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageProjectsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* Utilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utilities.swift; sourceTree = "<group>"; };
 		8D4F63B82B9F8D0900A10001 /* Stackvale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stackvale.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8D4F63BF2B9F8D0900A10001 /* StackvaleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackvaleApp.swift; sourceTree = "<group>"; };
 		8D4F63C12B9F8D0900A10001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -44,10 +62,27 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		A30000000000000000000001 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000005 /* RootViews.swift */,
+				A20000000000000000000006 /* OnboardingViews.swift */,
+				A20000000000000000000007 /* ServiceViews.swift */,
+				A20000000000000000000008 /* ManageProjectsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
 		8D4F63BA2B9F8D0900A10001 /* Stackvale */ = {
 			isa = PBXGroup;
 			children = (
 				8D4F63BF2B9F8D0900A10001 /* StackvaleApp.swift */,
+				A20000000000000000000001 /* Models.swift */,
+				A20000000000000000000002 /* ProjectStore.swift */,
+				A20000000000000000000003 /* ServiceManager.swift */,
+				A20000000000000000000004 /* ProjectScanner.swift */,
+				A20000000000000000000009 /* Utilities.swift */,
+				A30000000000000000000001 /* Views */,
 				8D4F63C12B9F8D0900A10001 /* Assets.xcassets */,
 			);
 			path = Stackvale;
@@ -122,6 +157,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000001 /* Models.swift in Sources */,
+				A10000000000000000000002 /* ProjectStore.swift in Sources */,
+				A10000000000000000000003 /* ServiceManager.swift in Sources */,
+				A10000000000000000000004 /* ProjectScanner.swift in Sources */,
+				A10000000000000000000005 /* RootViews.swift in Sources */,
+				A10000000000000000000006 /* OnboardingViews.swift in Sources */,
+				A10000000000000000000007 /* ServiceViews.swift in Sources */,
+				A10000000000000000000008 /* ManageProjectsView.swift in Sources */,
+				A10000000000000000000009 /* Utilities.swift in Sources */,
 				8D4F63C02B9F8D0900A10001 /* StackvaleApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
