@@ -92,10 +92,22 @@ final class ServiceManager: ObservableObject {
         }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = service.commandArguments
+        let environment = UserShellEnvironment.resolved()
+        do {
+            let command = try NodeCommandEnvironment.launchCommand(
+                executable: executable,
+                arguments: service.commandArguments,
+                workingDirectory: service.workingDirectoryURL,
+                environment: environment
+            )
+            process.executableURL = URL(fileURLWithPath: command.executable)
+            process.arguments = command.arguments
+        } catch {
+            setRuntime(service.id, status: .failed, lastError: error.localizedDescription)
+            return
+        }
         process.currentDirectoryURL = service.workingDirectoryURL
-        process.environment = UserShellEnvironment.resolved()
+        process.environment = environment
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -149,9 +161,13 @@ final class ServiceManager: ObservableObject {
             try process.run()
             processes[service.id] = process
             var runtime = runtime(for: service.id)
-            runtime.status = .running
             runtime.pidOrContainerId = String(process.processIdentifier)
             runtimes[service.id] = runtime
+
+            // Keep startup visible as transitional and poll until the process reports
+            // that it is ready. A process can be alive while its framework has already
+            // reported a fatal boot error (for example, a missing Node module).
+            waitForLocalCommandReadiness(service, process: process)
         } catch {
             setRuntime(service.id, status: .failed, lastError: error.localizedDescription)
         }
@@ -190,6 +206,12 @@ final class ServiceManager: ObservableObject {
                 runtime.log = updatedLog
                 if service.kind == .localCommand, let activePort = self.detectActivePort(in: updatedLog) {
                     runtime.activePort = activePort
+                }
+                if service.kind == .localCommand,
+                   (runtime.status == .starting || runtime.status == .running),
+                   let errorMessage = self.detectRuntimeError(in: updatedLog) {
+                    runtime.status = .failed
+                    runtime.lastError = errorMessage
                 }
                 self.runtimes[service.id] = runtime
             }
@@ -390,6 +412,66 @@ final class ServiceManager: ObservableObject {
         }
 
         return nil
+    }
+
+    private func detectRuntimeError(in output: String) -> String? {
+        let lines = output
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let errorPatterns = [
+            #"(?i)\[error\]"#,
+            #"(?i)\berror:\s"#,
+            #"(?i)\b(exception|fatal|panic):\s"#,
+            #"(?i)cannot find module"#,
+            #"(?i)module_not_found"#,
+            #"(?i)command not found"#,
+            #"(?i)\b(err!|errno|eaddrinuse|enotfound)\b"#
+        ]
+
+        guard let line = lines.last(where: { line in
+            errorPatterns.contains { line.range(of: $0, options: .regularExpression) != nil }
+        }) else { return nil }
+
+        return line
+    }
+
+    private func waitForLocalCommandReadiness(_ service: ServiceDefinition, process: Process) {
+        Task { @MainActor [weak self, weak process] in
+            guard let self, let process else { return }
+
+            while process.isRunning {
+                try? await Task.sleep(for: .seconds(2))
+                guard process.isRunning else { return }
+
+                let runtime = self.runtime(for: service.id)
+                guard runtime.status == .starting else { return }
+                guard runtime.lastError == nil else { return }
+
+                if self.hasStartupReadinessSignal(in: runtime.log, activePort: runtime.activePort) {
+                    var readyRuntime = runtime
+                    readyRuntime.status = .running
+                    self.runtimes[service.id] = readyRuntime
+                    return
+                }
+            }
+        }
+    }
+
+    private func hasStartupReadinessSignal(in log: String, activePort: Int?) -> Bool {
+        if activePort != nil { return true }
+
+        let readinessPatterns = [
+            #"(?i)\b(listening|started|ready|running)\b[^\n\r]{0,120}(?:on|at|port|http://|https://)"#,
+            #"(?i)\b(local|network):\s+https?://"#,
+            #"(?i)\bcompiled successfully\b"#,
+            #"(?i)\bserver is ready\b"#
+        ]
+
+        return readinessPatterns.contains {
+            log.range(of: $0, options: .regularExpression) != nil
+        }
     }
 
     private struct DockerComposeProbe {
