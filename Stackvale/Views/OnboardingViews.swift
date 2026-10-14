@@ -14,9 +14,13 @@ struct ProjectSetupView: View {
     @State private var isScanning = true
 
     var rootURL: URL
+    var compact = false
+    var onClose: (() -> Void)?
 
-    init(rootURL: URL) {
+    init(rootURL: URL, compact: Bool = false, onClose: (() -> Void)? = nil) {
         self.rootURL = rootURL
+        self.compact = compact
+        self.onClose = onClose
         _projectName = State(initialValue: rootURL.lastPathComponent)
     }
 
@@ -65,15 +69,23 @@ struct ProjectSetupView: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { close() }
                 Button("Save Project") { saveProject() }
                     .buttonStyle(.borderedProminent)
                     .disabled(projectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isScanning)
             }
         }
-        .padding(20)
-        .frame(width: 680, height: 620)
+        .padding(compact ? 16 : 20)
+        .frame(width: compact ? 430 : 680, height: compact ? 520 : 620)
         .task { await scan() }
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
     }
 
     private func scan() async {
@@ -115,7 +127,7 @@ struct ProjectSetupView: View {
             services: services
         )
         store.addProject(project)
-        dismiss()
+        close()
     }
 }
 
@@ -127,6 +139,8 @@ struct RescanProjectView: View {
     @State private var isScanning = true
 
     var project: Project
+    var compact = false
+    var onClose: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -145,15 +159,23 @@ struct RescanProjectView: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { close() }
                 Button("Import Selected") { importSelected() }
                     .buttonStyle(.borderedProminent)
                     .disabled(candidates.filter(\.selected).isEmpty || isScanning)
             }
         }
-        .padding(20)
-        .frame(width: 680, height: 580)
+        .padding(compact ? 16 : 20)
+        .frame(width: compact ? 430 : 680, height: compact ? 520 : 580)
         .task { await scan() }
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
     }
 
     private func scan() async {
@@ -174,7 +196,7 @@ struct RescanProjectView: View {
     private func importSelected() {
         let services = candidates.filter(\.selected).map { $0.makeService(projectID: project.id) }
         store.addServices(services, to: project.id)
-        dismiss()
+        close()
     }
 }
 

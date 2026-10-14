@@ -3,32 +3,81 @@ import AppKit
 
 // MARK: - Root UI
 
-private enum RootSheet: Identifiable {
-    case projectSetup(URL)
+private enum RootScreen {
     case addService(Project)
     case editService(ServiceDefinition)
     case serviceDetails(ServiceDefinition)
     case rescan(Project)
     case manageProjects
-
-    var id: String {
-        switch self {
-        case .projectSetup(let url): "projectSetup-\(url.path)"
-        case .addService(let project): "addService-\(project.id)"
-        case .editService(let service): "editService-\(service.id)"
-        case .serviceDetails(let service): "serviceDetails-\(service.id)"
-        case .rescan(let project): "rescan-\(project.id)"
-        case .manageProjects: "manageProjects"
-        }
-    }
 }
 
 struct StackvaleRootView: View {
     @EnvironmentObject private var store: ProjectStore
     @EnvironmentObject private var serviceManager: ServiceManager
-    @State private var sheet: RootSheet?
+    @State private var screen: RootScreen?
+    @State private var projectSetupURL: URL?
+    @State private var projectHotkeyMonitor: Any?
 
     var body: some View {
+        Group {
+            if let projectSetupURL {
+                ProjectSetupView(
+                    rootURL: projectSetupURL,
+                    compact: true,
+                    onClose: { self.projectSetupURL = nil }
+                )
+                .environmentObject(store)
+            } else if let screen {
+                screenContent(screen)
+            } else {
+                mainContent
+            }
+        }
+        .frame(width: 430, height: 520, alignment: .topLeading)
+        .onAppear {
+            Task { await serviceManager.refreshDockerStatuses(projects: store.projects) }
+            installProjectHotkeyMonitor()
+        }
+        .onDisappear {
+            removeProjectHotkeyMonitor()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .stackvaleShowManageProjects)) { _ in
+            projectSetupURL = nil
+            screen = .manageProjects
+        }
+    }
+
+    @ViewBuilder
+    private func screenContent(_ screen: RootScreen) -> some View {
+        switch screen {
+        case .addService(let project):
+            ServiceEditorView(project: project, service: nil, compact: true, onClose: closeScreen)
+                .environmentObject(store)
+        case .editService(let service):
+            ServiceEditorView(
+                project: store.projects.first { $0.id == service.projectId },
+                service: service,
+                compact: true,
+                onClose: closeScreen
+            )
+            .environmentObject(store)
+        case .serviceDetails(let service):
+            ServiceDetailsView(service: service, compact: true, onClose: closeScreen)
+                .environmentObject(serviceManager)
+        case .rescan(let project):
+            RescanProjectView(project: project, compact: true, onClose: closeScreen)
+                .environmentObject(store)
+        case .manageProjects:
+            ManageProjectsView(compact: true, onClose: closeScreen)
+                .environmentObject(store)
+        }
+    }
+
+    private func closeScreen() {
+        screen = nil
+    }
+
+    private var mainContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
 
@@ -37,11 +86,10 @@ struct StackvaleRootView: View {
             } else if let project = store.selectedProject {
                 ProjectOverviewView(
                     project: project,
-                    addService: { sheet = .addService(project) },
-                    editService: { sheet = .editService($0) },
-                    showDetails: { sheet = .serviceDetails($0) },
-                    rescan: { sheet = .rescan(project) },
-                    manageProjects: { sheet = .manageProjects }
+                    addService: { screen = .addService(project) },
+                    editService: { screen = .editService($0) },
+                    showDetails: { screen = .serviceDetails($0) },
+                    rescan: { screen = .rescan(project) }
                 )
             }
 
@@ -57,31 +105,6 @@ struct StackvaleRootView: View {
             }
         }
         .padding(16)
-        .onAppear {
-            Task { await serviceManager.refreshDockerStatuses(projects: store.projects) }
-        }
-        .sheet(item: $sheet) { item in
-            switch item {
-            case .projectSetup(let url):
-                ProjectSetupView(rootURL: url)
-                    .environmentObject(store)
-            case .addService(let project):
-                ServiceEditorView(project: project, service: nil)
-                    .environmentObject(store)
-            case .editService(let service):
-                ServiceEditorView(project: store.projects.first { $0.id == service.projectId }, service: service)
-                    .environmentObject(store)
-            case .serviceDetails(let service):
-                ServiceDetailsView(service: service)
-                    .environmentObject(serviceManager)
-            case .rescan(let project):
-                RescanProjectView(project: project)
-                    .environmentObject(store)
-            case .manageProjects:
-                ManageProjectsView()
-                    .environmentObject(store)
-            }
-        }
     }
 
     private var header: some View {
@@ -100,13 +123,27 @@ struct StackvaleRootView: View {
             }
 
             if !store.projects.isEmpty {
-                Picker("Project", selection: selectedProjectBinding) {
-                    ForEach(store.projects) { project in
-                        Text(project.name).tag(Optional(project.id))
+                HStack(spacing: 8) {
+                    Picker("Project", selection: selectedProjectBinding) {
+                        ForEach(store.projects) { project in
+                            Text(project.name).tag(Optional(project.id))
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+
+                    Button {
+                        screen = .manageProjects
+                    } label: {
+                        Label("Manage projects", systemImage: "folder")
+                    }
+                    .labelStyle(.iconOnly)
+                    .help("Manage projects")
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
+
+                Text("Tip: press 1–9 to switch projects.")
+                    .font(.caption2.italic())
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -122,9 +159,55 @@ struct StackvaleRootView: View {
     }
 
     private func chooseProjectDirectory() {
-        if let url = chooseDirectory(title: "Choose a project folder") {
-            sheet = .projectSetup(url)
+        let presentingWindow = NSApp.keyWindow
+        Task { @MainActor in
+            if let url = await chooseDirectory(title: "Choose a project folder", presentingWindow: presentingWindow) {
+                projectSetupURL = url
+            }
         }
+    }
+
+    private func installProjectHotkeyMonitor() {
+        guard projectHotkeyMonitor == nil else { return }
+
+        projectHotkeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard shouldHandleProjectHotkey(event),
+                  let projectNumber = projectNumber(from: event),
+                  projectNumber <= store.projects.count else { return event }
+
+            store.selectedProjectID = store.projects[projectNumber - 1].id
+            store.save()
+            return nil
+        }
+    }
+
+    private func removeProjectHotkeyMonitor() {
+        if let projectHotkeyMonitor {
+            NSEvent.removeMonitor(projectHotkeyMonitor)
+            self.projectHotkeyMonitor = nil
+        }
+    }
+
+    private func shouldHandleProjectHotkey(_ event: NSEvent) -> Bool {
+        guard screen == nil, projectSetupURL == nil else { return false }
+        guard !store.projects.isEmpty else { return false }
+        guard !event.modifierFlags.contains(.command),
+              !event.modifierFlags.contains(.option),
+              !event.modifierFlags.contains(.control) else { return false }
+        return !isTextInputFocused
+    }
+
+    private func projectNumber(from event: NSEvent) -> Int? {
+        guard let characters = event.charactersIgnoringModifiers, characters.count == 1,
+              let number = Int(characters), (1...9).contains(number) else { return nil }
+        return number
+    }
+
+    private var isTextInputFocused: Bool {
+        guard let firstResponder = NSApp.keyWindow?.firstResponder else { return false }
+        if firstResponder is NSTextView { return true }
+        if firstResponder is NSTextField { return true }
+        return false
     }
 }
 
@@ -156,7 +239,6 @@ struct ProjectOverviewView: View {
     var editService: (ServiceDefinition) -> Void
     var showDetails: (ServiceDefinition) -> Void
     var rescan: () -> Void
-    var manageProjects: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -210,8 +292,6 @@ struct ProjectOverviewView: View {
                 Button("Rescan project", action: rescan)
                 Spacer()
             }
-
-            Button("Manage projects", action: manageProjects)
         }
     }
 }
@@ -251,6 +331,12 @@ struct ServiceRowView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
+                            if let activePort = runtime.activePort {
+                                Text(verbatim: "· :\(activePort)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
                             if let exitCode = runtime.lastExitCode, runtime.status == .failed {
                                 Text("(\(exitCode))")
                                     .font(.caption)

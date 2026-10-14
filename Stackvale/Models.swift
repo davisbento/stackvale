@@ -183,9 +183,10 @@ enum RuntimeStatus: String, CaseIterable {
 struct ServiceRuntime {
     var serviceId: UUID
     var status: RuntimeStatus
-    var pidOrContainerId: String?
-    var lastExitCode: Int?
-    var lastError: String?
+    var pidOrContainerId: String? = nil
+    var activePort: Int? = nil
+    var lastExitCode: Int? = nil
+    var lastError: String? = nil
     var log: String
 
     static func stopped(serviceId: UUID) -> ServiceRuntime {

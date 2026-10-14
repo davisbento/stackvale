@@ -44,7 +44,7 @@ final class StatusBarController: NSObject {
             .frame(width: 430)
             .frame(minHeight: 360)
 
-        popover.behavior = .transient
+        popover.behavior = .applicationDefined
         popover.contentSize = NSSize(width: 430, height: 520)
         popover.contentViewController = NSHostingController(rootView: content)
         popover.delegate = self
@@ -62,16 +62,40 @@ final class StatusBarController: NSObject {
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            startOutsideClickMonitoring()
+            showPopover(relativeTo: button)
         }
+    }
+
+    private func showPopover(relativeTo button: NSStatusBarButton) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        if !popover.isShown {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
+        startOutsideClickMonitoring()
     }
 
     private func showContextMenu() {
         popover.performClose(nil)
 
         let menu = NSMenu()
+
+        let runningCount = serviceManager.runningServiceCount
+        let summaryTitle = runningCount == 1 ? "1 process running" : "\(runningCount) processes running"
+        let summaryItem = NSMenuItem(title: summaryTitle, action: nil, keyEquivalent: "")
+        summaryItem.isEnabled = false
+        menu.addItem(summaryItem)
+        menu.addItem(.separator())
+
+        let openItem = NSMenuItem(title: "Open Stackvale", action: #selector(openStackvale), keyEquivalent: "")
+        openItem.target = self
+        menu.addItem(openItem)
+
+        let manageProjectsItem = NSMenuItem(title: "Manage Projects", action: #selector(manageProjects), keyEquivalent: "")
+        manageProjectsItem.target = self
+        menu.addItem(manageProjectsItem)
+
+        menu.addItem(.separator())
+
         let quitItem = NSMenuItem(title: "Quit Stackvale", action: #selector(quitStackvale), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -86,6 +110,19 @@ final class StatusBarController: NSObject {
 
     @objc private func quitStackvale() {
         serviceManager.confirmQuit()
+    }
+
+    @objc private func openStackvale() {
+        guard let button = statusItem.button else { return }
+        showPopover(relativeTo: button)
+    }
+
+    @objc private func manageProjects() {
+        guard let button = statusItem.button else { return }
+        showPopover(relativeTo: button)
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .stackvaleShowManageProjects, object: nil)
+        }
     }
 
     private func startOutsideClickMonitoring() {
@@ -121,6 +158,7 @@ final class StatusBarController: NSObject {
         guard popover.isShown else { return }
         if event.window == popover.contentViewController?.view.window { return }
         if event.window == statusItem.button?.window { return }
+        if event.window is NSOpenPanel { return }
         closePopover()
     }
 
@@ -134,4 +172,8 @@ extension StatusBarController: NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         stopOutsideClickMonitoring()
     }
+}
+
+extension Notification.Name {
+    static let stackvaleShowManageProjects = Notification.Name("stackvaleShowManageProjects")
 }

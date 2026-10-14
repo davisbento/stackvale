@@ -16,6 +16,10 @@ final class ServiceManager: ObservableObject {
         runtimes[serviceID] ?? .stopped(serviceId: serviceID)
     }
 
+    var runningServiceCount: Int {
+        runtimes.values.filter { $0.status == .running }.count
+    }
+
     func start(_ service: ServiceDefinition) async {
         let current = runtime(for: service.id)
         guard current.status != .running && current.status != .starting else { return }
@@ -91,6 +95,7 @@ final class ServiceManager: ObservableObject {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = service.commandArguments
         process.currentDirectoryURL = service.workingDirectoryURL
+        process.environment = UserShellEnvironment.resolved()
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -101,13 +106,14 @@ final class ServiceManager: ObservableObject {
             serviceId: service.id,
             status: .starting,
             pidOrContainerId: nil,
+            activePort: nil,
             lastExitCode: nil,
             lastError: nil,
             log: "$ \(service.commandDisplay)\n"
         )
 
-        attachLogPipe(outputPipe.fileHandleForReading, serviceID: service.id)
-        attachLogPipe(errorPipe.fileHandleForReading, serviceID: service.id)
+        attachLogPipe(outputPipe.fileHandleForReading, service: service)
+        attachLogPipe(errorPipe.fileHandleForReading, service: service)
         readabilityHandlers[service.id] = [outputPipe.fileHandleForReading, errorPipe.fileHandleForReading]
 
         process.terminationHandler = { [weak self] terminatedProcess in
@@ -123,6 +129,9 @@ final class ServiceManager: ObservableObject {
                 var runtime = previous
                 runtime.status = status
                 runtime.pidOrContainerId = nil
+                if status == .stopped {
+                    runtime.activePort = nil
+                }
                 runtime.lastExitCode = exitCode
                 if status == .failed {
                     runtime.lastError = "Process exited with code \(exitCode)."
@@ -170,15 +179,19 @@ final class ServiceManager: ObservableObject {
         }
     }
 
-    private func attachLogPipe(_ handle: FileHandle, serviceID: UUID) {
+    private func attachLogPipe(_ handle: FileHandle, service: ServiceDefinition) {
         handle.readabilityHandler = { [weak self] fileHandle in
             let data = fileHandle.availableData
             guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
             Task { @MainActor in
                 guard let self else { return }
-                var runtime = self.runtime(for: serviceID)
-                runtime.log = self.limitedLog(runtime.log + chunk)
-                self.runtimes[serviceID] = runtime
+                var runtime = self.runtime(for: service.id)
+                let updatedLog = self.limitedLog(runtime.log + chunk)
+                runtime.log = updatedLog
+                if service.kind == .localCommand, let activePort = self.detectActivePort(in: updatedLog) {
+                    runtime.activePort = activePort
+                }
+                self.runtimes[service.id] = runtime
             }
         }
     }
@@ -211,6 +224,7 @@ final class ServiceManager: ObservableObject {
             serviceId: service.id,
             status: status,
             pidOrContainerId: runtime(for: service.id).pidOrContainerId,
+            activePort: runtime(for: service.id).activePort,
             lastExitCode: nil,
             lastError: nil,
             log: runtime(for: service.id).log + "$ \(commandDisplay)\n"
@@ -287,6 +301,7 @@ final class ServiceManager: ObservableObject {
             serviceId: service.id,
             status: .stopping,
             pidOrContainerId: runtime(for: service.id).pidOrContainerId,
+            activePort: runtime(for: service.id).activePort,
             lastExitCode: nil,
             lastError: nil,
             log: runtime(for: service.id).log + "$ \(commandDisplay)\n"
@@ -337,6 +352,35 @@ final class ServiceManager: ObservableObject {
             return "Docker CLI was not found. Install Docker Desktop or make `docker` available on PATH."
         }
         return trimmed.isEmpty ? "Docker command failed." : trimmed
+    }
+
+    private func detectActivePort(in log: String) -> Int? {
+        let recentLog = log
+            .split(whereSeparator: \.isNewline)
+            .suffix(40)
+            .joined(separator: "\n")
+
+        let patterns = [
+            #"https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])[:/](\d{2,5})"#,
+            #"(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})"#,
+            #"\b(?:listening|started|running)\b[^\n\r]{0,80}\b(?:on|at)\b[^\n\r]{0,30}:(\d{2,5})\b"#,
+            #"\b(?:listening|started|running)\b[^\n\r]{0,80}\bport\s+(\d{2,5})\b"#
+        ]
+
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+            let range = NSRange(recentLog.startIndex..<recentLog.endIndex, in: recentLog)
+            let matches = regex.matches(in: recentLog, range: range).reversed()
+
+            for match in matches where match.numberOfRanges > 1 {
+                guard let matchRange = Range(match.range(at: 1), in: recentLog),
+                      let port = Int(recentLog[matchRange]),
+                      (1...65535).contains(port) else { continue }
+                return port
+            }
+        }
+
+        return nil
     }
 
     private struct DockerComposeProbe {

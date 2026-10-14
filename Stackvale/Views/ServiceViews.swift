@@ -9,6 +9,8 @@ struct ServiceEditorView: View {
 
     var project: Project?
     var service: ServiceDefinition?
+    var compact = false
+    var onClose: (() -> Void)?
 
     @State private var name: String
     @State private var kind: ServiceKind
@@ -20,9 +22,11 @@ struct ServiceEditorView: View {
     @State private var iconCategory: IconCategory
     @State private var validationMessage: String?
 
-    init(project: Project?, service: ServiceDefinition?) {
+    init(project: Project?, service: ServiceDefinition?, compact: Bool = false, onClose: (() -> Void)? = nil) {
         self.project = project
         self.service = service
+        self.compact = compact
+        self.onClose = onClose
         _name = State(initialValue: service?.name ?? "")
         _kind = State(initialValue: service?.kind ?? .localCommand)
         _workingDirectory = State(initialValue: service?.workingDirectory ?? project?.rootPath ?? NSHomeDirectory())
@@ -103,14 +107,22 @@ struct ServiceEditorView: View {
                     Button("Delete", role: .destructive) { deleteService() }
                 }
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { close() }
                 Button("Save") { saveService() }
                     .buttonStyle(.borderedProminent)
                     .disabled(project == nil)
             }
         }
-        .padding(20)
-        .frame(width: 560)
+        .padding(compact ? 16 : 20)
+        .frame(width: compact ? 430 : 560)
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
     }
 
     private func saveService() {
@@ -190,7 +202,7 @@ struct ServiceEditorView: View {
         } else {
             store.updateService(definition)
         }
-        dismiss()
+        close()
     }
 
     private func deleteService() {
@@ -203,7 +215,7 @@ struct ServiceEditorView: View {
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn {
             store.removeService(service.id, from: project.id)
-            dismiss()
+            close()
         }
     }
 }
@@ -212,6 +224,8 @@ struct ServiceDetailsView: View {
     @EnvironmentObject private var serviceManager: ServiceManager
     @Environment(\.dismiss) private var dismiss
     var service: ServiceDefinition
+    var compact = false
+    var onClose: (() -> Void)?
 
     var body: some View {
         let runtime = serviceManager.runtime(for: service.id)
@@ -221,7 +235,7 @@ struct ServiceDetailsView: View {
                 Text(service.name)
                     .font(.title2.weight(.semibold))
                 Spacer()
-                Button("Done") { dismiss() }
+                Button("Done") { close() }
             }
 
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
@@ -232,6 +246,9 @@ struct ServiceDetailsView: View {
                 detailRow("Directory", service.workingDirectory.abbreviatingHomeDirectory())
                 if let pid = runtime.pidOrContainerId {
                     detailRow(service.kind == .dockerCompose ? "Container" : "PID", pid)
+                }
+                if let activePort = runtime.activePort {
+                    detailRow("Active port", String(activePort))
                 }
                 if let lastExitCode = runtime.lastExitCode {
                     detailRow("Last exit", String(lastExitCode))
@@ -252,8 +269,16 @@ struct ServiceDetailsView: View {
             .frame(minHeight: 220)
             .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
         }
-        .padding(20)
-        .frame(width: 620, height: 520)
+        .padding(compact ? 16 : 20)
+        .frame(width: compact ? 430 : 620, height: 520)
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
     }
 
     private func detailRow(_ label: String, _ value: String) -> some View {

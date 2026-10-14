@@ -373,6 +373,7 @@ enum CommandRunner {
                 process.executableURL = URL(fileURLWithPath: executable)
                 process.arguments = arguments
                 process.currentDirectoryURL = workingDirectory
+                process.environment = UserShellEnvironment.resolved()
 
                 let outputPipe = Pipe()
                 let errorPipe = Pipe()

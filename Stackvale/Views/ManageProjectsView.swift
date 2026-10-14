@@ -6,6 +6,8 @@ import AppKit
 struct ManageProjectsView: View {
     @EnvironmentObject private var store: ProjectStore
     @Environment(\.dismiss) private var dismiss
+    var compact = false
+    var onClose: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -13,7 +15,7 @@ struct ManageProjectsView: View {
                 Text("Manage Projects")
                     .font(.title2.weight(.semibold))
                 Spacer()
-                Button("Done") { dismiss() }
+                Button("Done") { close() }
             }
 
             List {
@@ -36,8 +38,16 @@ struct ManageProjectsView: View {
                 }
             }
         }
-        .padding(20)
-        .frame(width: 520, height: 420)
+        .padding(compact ? 16 : 20)
+        .frame(width: compact ? 430 : 520, height: compact ? 520 : 420)
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
     }
 
     private func removeProject(_ project: Project) {
