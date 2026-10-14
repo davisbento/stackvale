@@ -30,6 +30,14 @@ struct ServiceDefinition: Identifiable, Codable, Equatable {
 
     var workingDirectoryURL: URL { URL(fileURLWithPath: workingDirectory) }
 
+    var displayIconCategory: IconCategory {
+        if kind == .localCommand, localCommandLooksDockerBacked {
+            return .docker
+        }
+
+        return iconCategory
+    }
+
     var identityText: String {
         if let displayPort {
             return ":\(displayPort)"
@@ -37,7 +45,14 @@ struct ServiceDefinition: Identifiable, Codable, Equatable {
 
         switch kind {
         case .localCommand:
-            return iconCategory == .nodejs ? "Node.js" : "Command"
+            switch displayIconCategory {
+            case .docker:
+                return "Docker"
+            case .nodejs:
+                return "Node.js"
+            default:
+                return "Command"
+            }
         case .dockerCompose:
             return "Docker"
         }
@@ -51,6 +66,14 @@ struct ServiceDefinition: Identifiable, Codable, Equatable {
             guard let composeFile, let composeService else { return "docker compose" }
             return "docker compose -f \"\(composeFile)\" up -d \(composeService)"
         }
+    }
+
+    private var localCommandLooksDockerBacked: Bool {
+        let haystack = "\(name) \(commandDisplay) \(commandArguments.joined(separator: " "))".lowercased()
+        return haystack.contains("docker compose")
+            || haystack.contains("docker-compose")
+            || haystack.contains("docker:up")
+            || haystack.contains("docker:start")
     }
 }
 

@@ -217,7 +217,7 @@ struct ServiceDetailsView: View {
         let runtime = serviceManager.runtime(for: service.id)
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: service.iconCategory.symbolName)
+                Image(systemName: service.displayIconCategory.symbolName)
                 Text(service.name)
                     .font(.title2.weight(.semibold))
                 Spacer()

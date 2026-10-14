@@ -134,10 +134,10 @@ enum ProjectScanner {
         guard let scripts = package["scripts"] as? [String: String], !scripts.isEmpty else { return [] }
 
         let packageManager = detectPackageManager(package: package, rootURL: rootURL, warnings: &warnings)
-        let scriptNames = orderedScriptNames(Array(scripts.keys))
+        let scriptNames = orderedScriptNames(scripts)
 
         return scriptNames.compactMap { scriptName in
-            guard let scriptCommand = scripts[scriptName], !isInstallLifecycleScript(scriptName) else { return nil }
+            guard let scriptCommand = scripts[scriptName], isRunnableProjectScript(scriptName: scriptName, scriptCommand: scriptCommand) else { return nil }
 
             let runArguments = packageManager == "yarn" ? [scriptName] : ["run", scriptName]
             let commandArguments = [packageManager] + runArguments
@@ -189,16 +189,104 @@ enum ProjectScanner {
         return "npm"
     }
 
-    private static func orderedScriptNames(_ names: [String]) -> [String] {
-        let priority = ["dev", "start", "serve", "preview"]
-        let filtered = names.filter { !isInstallLifecycleScript($0) }
-        let priorityNames = priority.filter { filtered.contains($0) }
-        let remaining = filtered.filter { !priority.contains($0) }.sorted()
-        return priorityNames + remaining
+    private static func orderedScriptNames(_ scripts: [String: String]) -> [String] {
+        scripts.keys
+            .filter { scriptName in
+                guard let scriptCommand = scripts[scriptName] else { return false }
+                return isRunnableProjectScript(scriptName: scriptName, scriptCommand: scriptCommand)
+            }
+            .sorted { left, right in
+                let leftRank = scriptPriorityRank(left)
+                let rightRank = scriptPriorityRank(right)
+                if leftRank != rightRank { return leftRank < rightRank }
+                return left.localizedStandardCompare(right) == .orderedAscending
+            }
     }
 
     private static func isInstallLifecycleScript(_ name: String) -> Bool {
         ["preinstall", "install", "postinstall", "prepare"].contains(name)
+    }
+
+    private static func isRunnableProjectScript(scriptName: String, scriptCommand: String) -> Bool {
+        let tokens = scriptNameTokens(scriptName)
+        guard !isInstallLifecycleScript(scriptName), !tokens.contains(where: maintenanceScriptTokens.contains) else {
+            return false
+        }
+
+        if tokens.contains(where: runnableScriptTokens.contains) {
+            return true
+        }
+
+        return commandLooksLikeProjectRunner(scriptCommand)
+    }
+
+    private static func scriptPriorityRank(_ scriptName: String) -> Int {
+        let tokens = scriptNameTokens(scriptName)
+        let exactName = scriptName.lowercased()
+        let priorities = ["dev", "start", "serve", "preview", "storybook", "server"]
+
+        for (index, priority) in priorities.enumerated() where exactName == priority {
+            return index
+        }
+
+        for (index, priority) in priorities.enumerated() where tokens.contains(priority) {
+            return priorities.count + index
+        }
+
+        return priorities.count * 2
+    }
+
+    private static var runnableScriptTokens: Set<String> {
+        ["dev", "start", "serve", "preview", "storybook", "server"]
+    }
+
+    private static var maintenanceScriptTokens: Set<String> {
+        [
+            "analyze", "audit", "build", "check", "clean", "codegen", "compile", "deploy", "eslint", "fmt",
+            "format", "gen", "generate", "jest", "lint", "migrate", "mocha", "prettier", "release", "spec",
+            "stylelint", "test", "tsc", "type", "typecheck", "typegen", "types", "typings", "validate", "vitest"
+        ]
+    }
+
+    private static func scriptNameTokens(_ name: String) -> Set<String> {
+        let tokens = name
+            .lowercased()
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
+
+        return Set(tokens)
+    }
+
+    private static func commandLooksLikeProjectRunner(_ command: String) -> Bool {
+        let normalizedCommand = command
+            .lowercased()
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        guard !normalizedCommand.isEmpty else { return false }
+
+        let maintenanceCommandPatterns = [
+            #"\b(eslint|prettier|stylelint|tsc|vitest|jest|mocha|playwright|cypress|tsup|rollup)\b"#,
+            #"\b(typecheck|type-check|typegen|codegen)\b"#,
+            #"\b(prisma\s+generate|graphql-codegen)\b"#,
+            #"\b(next|vite|astro|nuxt|remix)\s+build\b"#
+        ]
+
+        if maintenanceCommandPatterns.contains(where: { normalizedCommand.matches(pattern: $0) }) {
+            return false
+        }
+
+        let runnerCommandPatterns = [
+            #"(^|&&|\|\||;)\s*(next|nuxt|astro|remix|vite)\s+(dev|start|preview)\b"#,
+            #"(^|&&|\|\||;)\s*webpack\s+serve\b"#,
+            #"(^|&&|\|\||;)\s*(storybook|start-storybook)\b"#,
+            #"(^|&&|\|\||;)\s*(http-server|serve|sirv)\b"#,
+            #"(^|&&|\|\||;)\s*(node|tsx|ts-node|bun)\s+.*\b(server|app|index|main)\.(js|ts|mjs|cjs)\b"#,
+            #"(^|&&|\|\||;)\s*docker(-compose|\s+compose)\b.*\b(up\s+.*-d|-d\s+.*up|start)\b"#
+        ]
+
+        return runnerCommandPatterns.contains { normalizedCommand.matches(pattern: $0) }
     }
 
     private static func displayName(forScriptName scriptName: String) -> String {
@@ -218,6 +306,10 @@ enum ProjectScanner {
 
     private static func suggestedIconCategory(scriptName: String, scriptCommand: String) -> IconCategory {
         let haystack = "\(scriptName) \(scriptCommand)".lowercased()
+        if haystack.contains("docker compose") || haystack.contains("docker-compose") {
+            return .docker
+        }
+
         let webHints = ["next", "vite", "astro", "nuxt", "remix", "webpack", "storybook", "http-server", "serve", "--host", "--port"]
         if webHints.contains(where: { haystack.contains($0) }) || ["dev", "start", "preview"].contains(scriptName) {
             return .web
@@ -258,6 +350,12 @@ enum ProjectScanner {
             return "Docker CLI was not found."
         }
         return trimmed.isEmpty ? "Docker Compose returned no details." : trimmed
+    }
+}
+
+private extension String {
+    func matches(pattern: String) -> Bool {
+        range(of: pattern, options: .regularExpression) != nil
     }
 }
 

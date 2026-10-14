@@ -7,6 +7,8 @@ final class StatusBarController: NSObject {
     private let serviceManager: ServiceManager
     private let statusItem: NSStatusItem
     private let popover: NSPopover
+    private var globalEventMonitor: Any?
+    private var localEventMonitor: Any?
 
     init(projectStore: ProjectStore, serviceManager: ServiceManager) {
         self.projectStore = projectStore
@@ -45,6 +47,7 @@ final class StatusBarController: NSObject {
         popover.behavior = .transient
         popover.contentSize = NSSize(width: 430, height: 520)
         popover.contentViewController = NSHostingController(rootView: content)
+        popover.delegate = self
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
@@ -61,6 +64,7 @@ final class StatusBarController: NSObject {
         } else {
             NSApplication.shared.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            startOutsideClickMonitoring()
         }
     }
 
@@ -82,5 +86,52 @@ final class StatusBarController: NSObject {
 
     @objc private func quitStackvale() {
         serviceManager.confirmQuit()
+    }
+
+    private func startOutsideClickMonitoring() {
+        stopOutsideClickMonitoring()
+
+        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor in
+                self?.closePopover()
+            }
+        }
+
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            Task { @MainActor in
+                self?.closePopoverIfNeeded(for: event)
+            }
+            return event
+        }
+    }
+
+    private func stopOutsideClickMonitoring() {
+        if let globalEventMonitor {
+            NSEvent.removeMonitor(globalEventMonitor)
+            self.globalEventMonitor = nil
+        }
+
+        if let localEventMonitor {
+            NSEvent.removeMonitor(localEventMonitor)
+            self.localEventMonitor = nil
+        }
+    }
+
+    private func closePopoverIfNeeded(for event: NSEvent) {
+        guard popover.isShown else { return }
+        if event.window == popover.contentViewController?.view.window { return }
+        if event.window == statusItem.button?.window { return }
+        closePopover()
+    }
+
+    private func closePopover() {
+        guard popover.isShown else { return }
+        popover.performClose(nil)
+    }
+}
+
+extension StatusBarController: NSPopoverDelegate {
+    func popoverDidClose(_ notification: Notification) {
+        stopOutsideClickMonitoring()
     }
 }

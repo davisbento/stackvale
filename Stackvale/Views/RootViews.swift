@@ -181,7 +181,7 @@ struct ProjectOverviewView: View {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .labelStyle(.iconOnly)
-                .help("Refresh Docker Compose statuses")
+                .help("Refresh Docker statuses")
             }
 
             if project.services.isEmpty {
@@ -228,7 +228,7 @@ struct ServiceRowView: View {
         HStack(spacing: 10) {
             Button(action: details) {
                 HStack(spacing: 9) {
-                    Image(systemName: service.iconCategory.symbolName)
+                    Image(systemName: service.displayIconCategory.symbolName)
                         .frame(width: 18)
                         .foregroundStyle(.primary)
 
@@ -271,17 +271,23 @@ struct ServiceRowView: View {
                 Image(systemName: "ellipsis.circle")
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
             .frame(width: 24)
 
-            Button(runtime.status == .running ? "Stop" : "Start") {
+            Button {
                 if runtime.status == .running {
                     stop()
                 } else if confirmStart(service) {
                     start()
                 }
+            } label: {
+                Image(systemName: runtime.status == .running ? "stop.fill" : "play.fill")
+                    .frame(width: 18, height: 18)
             }
+            .accessibilityLabel(runtime.status == .running ? "Stop \(service.name)" : "Start \(service.name)")
+            .help(runtime.status == .running ? "Stop" : "Start")
             .disabled(runtime.status.isTransitioning || runtime.status == .external)
-            .frame(width: 64)
+            .frame(width: 44)
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 8)
@@ -289,12 +295,44 @@ struct ServiceRowView: View {
     }
 
     private func confirmStart(_ service: ServiceDefinition) -> Bool {
+        if ExecutionTrustStore.isProjectTrusted(service.projectId) {
+            return true
+        }
+
         let alert = NSAlert()
         alert.messageText = "Start \(service.name)?"
-        alert.informativeText = "Stackvale will run this saved command in:\n\(service.workingDirectory.abbreviatingHomeDirectory())\n\n\(service.resolvedCommand)"
+        alert.informativeText = "Stackvale will run this saved command in:\n\(service.workingDirectory.abbreviatingHomeDirectory())\n\n\(service.resolvedCommand)\n\nOnly trust projects whose commands you understand."
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "Start")
+        alert.addButton(withTitle: "Trust & Start")
+        alert.addButton(withTitle: "Start Once")
         alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            ExecutionTrustStore.trustProject(service.projectId)
+            return true
+        case .alertSecondButtonReturn:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+private enum ExecutionTrustStore {
+    private static let trustedProjectIDsKey = "trustedProjectIDs"
+
+    static func isProjectTrusted(_ projectID: UUID) -> Bool {
+        trustedProjectIDs.contains(projectID.uuidString)
+    }
+
+    static func trustProject(_ projectID: UUID) {
+        var ids = trustedProjectIDs
+        ids.insert(projectID.uuidString)
+        UserDefaults.standard.set(Array(ids), forKey: trustedProjectIDsKey)
+    }
+
+    private static var trustedProjectIDs: Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: trustedProjectIDsKey) ?? [])
     }
 }
