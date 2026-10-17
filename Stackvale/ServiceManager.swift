@@ -23,6 +23,7 @@ final class ServiceManager: ObservableObject {
     func start(_ service: ServiceDefinition) async {
         let current = runtime(for: service.id)
         guard current.status != .running && current.status != .starting else { return }
+        guard !(processes[service.id]?.isRunning ?? false) else { return }
 
         switch service.kind {
         case .localCommand:
@@ -59,6 +60,29 @@ final class ServiceManager: ObservableObject {
     func removeRuntime(for serviceID: UUID) {
         runtimes.removeValue(forKey: serviceID)
         processes.removeValue(forKey: serviceID)
+    }
+
+    func canKillLocalProcess(for service: ServiceDefinition) -> Bool {
+        service.kind == .localCommand && (processes[service.id]?.isRunning ?? false)
+    }
+
+    func kill(_ service: ServiceDefinition) {
+        guard service.kind == .localCommand,
+              let process = processes[service.id], process.isRunning else { return }
+
+        var runtime = runtime(for: service.id)
+        runtime.log = limitedLog(runtime.log + "\n[killing process \(process.processIdentifier)]\n")
+        runtimes[service.id] = runtime
+        process.terminate()
+
+        // Some runtimes do not exit on SIGTERM (or leave a shell wrapper alive).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self, weak process] in
+            guard let self, let process, process.isRunning else { return }
+            process.interrupt()
+            var runtime = self.runtime(for: service.id)
+            runtime.log = self.limitedLog(runtime.log + "[process did not exit after kill request; sent interrupt]\n")
+            self.runtimes[service.id] = runtime
+        }
     }
 
     func confirmQuit() {
@@ -141,7 +165,7 @@ final class ServiceManager: ObservableObject {
                 var runtime = previous
                 runtime.status = status
                 runtime.pidOrContainerId = nil
-                if status == .stopped {
+                if status != .running {
                     runtime.activePort = nil
                 }
                 runtime.lastExitCode = exitCode
@@ -208,14 +232,24 @@ final class ServiceManager: ObservableObject {
                     runtime.activePort = activePort
                 }
                 if service.kind == .localCommand,
-                   (runtime.status == .starting || runtime.status == .running),
+                   runtime.status == .starting,
                    let errorMessage = self.detectRuntimeError(in: updatedLog) {
                     runtime.status = .failed
                     runtime.lastError = errorMessage
+                    runtime.activePort = nil
+                    self.terminateFailedStartup(service, process: self.processes[service.id])
                 }
                 self.runtimes[service.id] = runtime
             }
         }
+    }
+
+    private func terminateFailedStartup(_ service: ServiceDefinition, process: Process?) {
+        guard let process, process.isRunning else { return }
+        var runtime = runtime(for: service.id)
+        runtime.log = limitedLog(runtime.log + "[startup failed; stopping process]\n")
+        runtimes[service.id] = runtime
+        process.terminate()
     }
 
     private enum DockerAction {
@@ -363,6 +397,9 @@ final class ServiceManager: ObservableObject {
         var runtime = runtime(for: serviceID)
         runtime.status = status
         runtime.lastError = lastError
+        if status != .running {
+            runtime.activePort = nil
+        }
         if let lastError {
             runtime.log = limitedLog(runtime.log + "\n[error] \(lastError)\n")
         }

@@ -227,6 +227,24 @@ struct ServiceDetailsView: View {
     var compact = false
     var onClose: (() -> Void)?
 
+    @State private var selectedPanel: DetailsPanel = .logs
+    @StateObject private var terminal: TerminalSession
+
+    private enum DetailsPanel: String, CaseIterable, Identifiable {
+        case logs
+        case terminal
+
+        var id: String { rawValue }
+        var label: String { self == .logs ? "Logs" : "Terminal" }
+    }
+
+    init(service: ServiceDefinition, compact: Bool = false, onClose: (() -> Void)? = nil) {
+        self.service = service
+        self.compact = compact
+        self.onClose = onClose
+        _terminal = StateObject(wrappedValue: TerminalSession(workingDirectory: service.workingDirectoryURL))
+    }
+
     var body: some View {
         let runtime = serviceManager.runtime(for: service.id)
         VStack(alignment: .leading, spacing: 12) {
@@ -235,6 +253,13 @@ struct ServiceDetailsView: View {
                 Text(service.name)
                     .font(.title2.weight(.semibold))
                 Spacer()
+                if serviceManager.canKillLocalProcess(for: service) {
+                    Button("Kill process", systemImage: "xmark.octagon") {
+                        serviceManager.kill(service)
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Kill the local process")
+                }
                 Button("Done") { close() }
             }
 
@@ -258,16 +283,40 @@ struct ServiceDetailsView: View {
                 }
             }
 
-            Text("Logs")
-                .font(.headline)
-            ScrollView {
-                Text(runtime.log.isEmpty ? "No logs captured yet." : runtime.log)
-                    .font(.system(.caption, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
+            Picker("Details panel", selection: $selectedPanel) {
+                ForEach(DetailsPanel.allCases) { panel in
+                    Text(panel.label).tag(panel)
+                }
             }
-            .frame(minHeight: 220)
-            .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            .pickerStyle(.segmented)
+
+            if selectedPanel == .logs {
+                ScrollView {
+                    Text(runtime.log.isEmpty ? "No logs captured yet." : runtime.log)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+            } else {
+                TerminalPanelView(
+                    session: terminal,
+                    workingDirectory: service.workingDirectory,
+                    compact: compact
+                )
+            }
+        }
+        .onAppear {
+            if selectedPanel == .terminal {
+                terminal.start()
+            }
+        }
+        .onChange(of: selectedPanel) { _, panel in
+            if panel == .terminal {
+                terminal.start()
+            }
+        }
+        .onDisappear {
+            terminal.terminate()
         }
         .padding(compact ? 16 : 20)
         .frame(width: compact ? 430 : 620, height: 520)
@@ -289,5 +338,64 @@ struct ServiceDetailsView: View {
                 .textSelection(.enabled)
                 .lineLimit(3)
         }
+    }
+}
+
+private struct TerminalPanelView: View {
+    @ObservedObject var session: TerminalSession
+    var workingDirectory: String
+    var compact: Bool
+    @State private var command = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Runs in \(workingDirectory.abbreviatingHomeDirectory())")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Text(session.output.isEmpty ? "Terminal ready. Type a command below." : session.output)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .id("terminal-output")
+                }
+                .onChange(of: session.output) { _, _ in
+                    proxy.scrollTo("terminal-output", anchor: .bottom)
+                }
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, minHeight: compact ? 150 : 220, maxHeight: .infinity)
+            .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+
+            HStack(spacing: 6) {
+                Text("$")
+                    .font(.system(.body, design: .monospaced).weight(.semibold))
+                TextField("Enter command", text: $command)
+                    .font(.system(.body, design: .monospaced))
+                    .textFieldStyle(.plain)
+                    .onSubmit(runCommand)
+                Button("Run", action: runCommand)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !session.isRunning)
+            }
+            .padding(8)
+            .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+
+            Text("Commands run with your account privileges. Only run commands you trust.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear { session.start() }
+    }
+
+    private func runCommand() {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        session.send(trimmed)
+        command = ""
     }
 }
