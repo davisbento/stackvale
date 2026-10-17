@@ -16,3 +16,11 @@ Package.resolved
 # Playgrounds
 timeline.xctimeline
 playground.xcworkspace
+.DS_Store
+DerivedData/
+macos/DerivedData/
+macos/DerivedData-Release/
+dist/
+web/node_modules/
+web/.next/
+web/public/Stackvale.dmg
