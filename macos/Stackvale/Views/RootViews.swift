@@ -1,6 +1,48 @@
 import SwiftUI
 import AppKit
 
+struct DashboardView: View {
+    @EnvironmentObject private var store: ProjectStore
+    @EnvironmentObject private var serviceManager: ServiceManager
+    @State private var selectedService: ServiceDefinition?
+    private var services: [ServiceDefinition] { store.projects.flatMap(\.services).sorted { rank(serviceManager.runtime(for: $0.id).status) < rank(serviceManager.runtime(for: $1.id).status) } }
+    var body: some View {
+        NavigationSplitView {
+            List {
+                Section("All services") { Text("\(services.count) configured").foregroundStyle(.secondary) }
+                ForEach(IconCategory.allCases.filter { category in services.contains { $0.displayIconCategory == category } }) { category in
+                    Section(category.label) {
+                        ForEach(services.filter { $0.displayIconCategory == category }) { service in
+                            let runtime = serviceManager.runtime(for: service.id)
+                            HStack(spacing: 10) {
+                                Button { selectedService = service } label: { serviceRow(service) }
+                                    .buttonStyle(.plain)
+                                Button {
+                                    if runtime.status == .running {
+                                        Task { await serviceManager.stop(service) }
+                                    } else {
+                                        Task { await serviceManager.start(service) }
+                                    }
+                                } label: {
+                                    Image(systemName: runtime.status == .running ? "stop.fill" : "play.fill")
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(runtime.status.isTransitioning || runtime.status == .external)
+                                .help(runtime.status == .running ? "Stop" : "Start")
+                            }
+                        }
+                    }
+                }
+            }.listStyle(.sidebar).navigationTitle("Stackvale")
+        } detail: {
+            if let selectedService { ServiceDetailsView(service: selectedService).environmentObject(serviceManager).frame(minWidth: 520, minHeight: 420) }
+            else { ContentUnavailableView("Select a service", systemImage: "square.stack.3d.up") }
+        }.toolbar { ToolbarItem { Button { Task { await serviceManager.refreshDockerStatuses(projects: store.projects) } } label: { Label("Refresh", systemImage: "arrow.clockwise") } } }.task { await serviceManager.refreshDockerStatuses(projects: store.projects) }
+    }
+    private func serviceRow(_ service: ServiceDefinition) -> some View { let runtime = serviceManager.runtime(for: service.id); return HStack { Image(systemName: service.displayIconCategory.symbolName).frame(width: 18); VStack(alignment: .leading) { Text(service.name); Text(store.projects.first { $0.id == service.projectId }?.name ?? "Unknown project").font(.caption).foregroundStyle(.secondary) }; Spacer(); Image(systemName: runtime.status.statusSymbol).foregroundStyle(runtime.status.tint) } }
+    private func rank(_ status: RuntimeStatus) -> Int { switch status { case .running: 0; case .starting, .stopping: 1; case .failed: 2; case .stopped, .external, .unknown: 3 } }
+}
+
 // MARK: - Root UI
 
 private enum RootScreen {
@@ -98,6 +140,9 @@ struct StackvaleRootView: View {
             HStack {
                 Button("Add Project", action: chooseProjectDirectory)
                 Spacer()
+                Button("Open") {
+                    NotificationCenter.default.post(name: .stackvaleOpenDashboard, object: nil)
+                }
                 Button("Quit") {
                     serviceManager.confirmQuit()
                 }

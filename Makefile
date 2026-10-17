@@ -5,15 +5,20 @@ CONFIGURATION ?= Debug
 DERIVED_DATA := $(MACOS_DIR)/DerivedData
 RELEASE_DERIVED_DATA := $(MACOS_DIR)/DerivedData-Release
 APP := $(DERIVED_DATA)/Build/Products/$(CONFIGURATION)/Stackvale.app
+APPLICATIONS_DIR ?= /Applications
+INSTALLED_APP := $(APPLICATIONS_DIR)/Stackvale.app
 RELEASE_APP := $(RELEASE_DERIVED_DATA)/Build/Products/Release/Stackvale.app
 DIST_DIR := dist
 DMG := $(DIST_DIR)/Stackvale.dmg
 SQLITE_DB := $(HOME)/Library/Application Support/Stackvale/stackvale.sqlite3
 
-.PHONY: build release dmg open sqlite web-dev web-build clean
+.PHONY: build release install dmg open sqlite web-dev web-build clean
 
 build:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration $(CONFIGURATION) -derivedDataPath $(DERIVED_DATA) build
+
+install: build
+	ditto $(APP) $(INSTALLED_APP)
 
 release:
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release -derivedDataPath $(RELEASE_DERIVED_DATA) build

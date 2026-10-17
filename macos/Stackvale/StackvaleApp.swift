@@ -25,5 +25,10 @@ final class StackvaleAppDelegate: NSObject, NSApplicationDelegate {
             projectStore: projectStore,
             serviceManager: serviceManager
         )
+
+        // Stackvale is a regular application with a menu-bar companion,
+        // rather than a menu-bar-only utility.
+        NSApp.setActivationPolicy(.regular)
+        statusBarController?.openDashboard()
     }
 }

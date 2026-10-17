@@ -253,6 +253,17 @@ struct ServiceDetailsView: View {
                 Text(service.name)
                     .font(.title2.weight(.semibold))
                 Spacer()
+                Button {
+                    if runtime.status == .running {
+                        Task { await serviceManager.stop(service) }
+                    } else {
+                        Task { await serviceManager.start(service) }
+                    }
+                } label: {
+                    Label(runtime.status == .running ? "Stop" : "Start", systemImage: runtime.status == .running ? "stop.fill" : "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(runtime.status.isTransitioning || runtime.status == .external)
                 if serviceManager.canKillLocalProcess(for: service) {
                     Button("Kill process", systemImage: "xmark.octagon") {
                         serviceManager.kill(service)

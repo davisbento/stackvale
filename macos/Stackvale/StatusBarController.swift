@@ -7,6 +7,7 @@ final class StatusBarController: NSObject {
     private let serviceManager: ServiceManager
     private let statusItem: NSStatusItem
     private let popover: NSPopover
+    private var dashboardWindowController: NSWindowController?
     private var globalEventMonitor: Any?
     private var localEventMonitor: Any?
 
@@ -20,6 +21,7 @@ final class StatusBarController: NSObject {
 
         configureStatusItem()
         configurePopover()
+        NotificationCenter.default.addObserver(self, selector: #selector(openStackvale), name: .stackvaleOpenDashboard, object: nil)
     }
 
     private func configureStatusItem() {
@@ -86,7 +88,7 @@ final class StatusBarController: NSObject {
         menu.addItem(summaryItem)
         menu.addItem(.separator())
 
-        let openItem = NSMenuItem(title: "Open Stackvale", action: #selector(openStackvale), keyEquivalent: "")
+        let openItem = NSMenuItem(title: "Open", action: #selector(openStackvale), keyEquivalent: "")
         openItem.target = self
         menu.addItem(openItem)
 
@@ -113,8 +115,32 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func openStackvale() {
-        guard let button = statusItem.button else { return }
-        showPopover(relativeTo: button)
+        openDashboard()
+    }
+
+    func openDashboard() {
+        // The status item remains available, but this turns Stackvale into a normal
+        // foreground application while its main window is open.
+        NSApp.setActivationPolicy(.regular)
+        if let dashboardWindowController {
+            dashboardWindowController.showWindow(nil)
+            dashboardWindowController.window?.makeKeyAndOrderFront(nil)
+        } else {
+            let content = DashboardView()
+                .environmentObject(projectStore)
+                .environmentObject(serviceManager)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+            window.title = "Stackvale"
+            window.isReleasedWhenClosed = false
+            window.minSize = NSSize(width: 900, height: 600)
+            window.contentViewController = NSHostingController(rootView: content)
+            let controller = NSWindowController(window: window)
+            dashboardWindowController = controller
+            controller.showWindow(nil)
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+        }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func manageProjects() {
@@ -177,4 +203,5 @@ extension StatusBarController: NSPopoverDelegate {
 
 extension Notification.Name {
     static let stackvaleShowManageProjects = Notification.Name("stackvaleShowManageProjects")
+    static let stackvaleOpenDashboard = Notification.Name("stackvaleOpenDashboard")
 }
