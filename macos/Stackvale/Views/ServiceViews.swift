@@ -289,27 +289,36 @@ struct ServiceDetailsView: View {
                 metadataCard("DIRETÓRIO", service.workingDirectory.abbreviatingHomeDirectory())
             }
 
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text("Atividade").font(.headline)
-                    Spacer()
-                    Label(runtime.status == .running ? "Em execução" : "Pronto para iniciar", systemImage: "circle.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(runtime.status == .running ? .green : .secondary)
-                }
-                .padding(16)
-                Divider()
-                ScrollView {
-                    Text(runtime.log.isEmpty ? "Nenhum processo em execução.\n\nInicie o serviço para acompanhar os logs aqui." : runtime.log)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .padding(16)
+            Picker("Painel de detalhes", selection: $selectedPanel) {
+                ForEach(DetailsPanel.allCases) { panel in
+                    Text(panel.label).tag(panel)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.separator))
+            .pickerStyle(.segmented)
+
+            if selectedPanel == .logs {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Text("Atividade").font(.headline)
+                        Spacer()
+                        Label(runtime.status == .running ? "Em execução" : "Pronto para iniciar", systemImage: "circle.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(runtime.status == .running ? .green : .secondary)
+                    }
+                    .padding(16)
+                    Divider()
+                    ScrollView {
+                        Text(runtime.log.isEmpty ? "Nenhum processo em execução.\n\nInicie o serviço para acompanhar os logs aqui." : runtime.log)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(16)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.separator))
+            }
 
             if selectedPanel == .terminal {
                 TerminalPanelView(session: terminal, workingDirectory: service.workingDirectory, compact: compact)
