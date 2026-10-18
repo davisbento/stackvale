@@ -173,14 +173,7 @@ enum RuntimeStatus: String, CaseIterable {
     }
 
     var tint: Color {
-        switch self {
-        case .running: .green
-        case .failed: .red
-        case .starting, .stopping: .orange
-        case .external: .blue
-        case .unknown: .secondary
-        case .stopped: .secondary
-        }
+        self == .running ? .green : .secondary
     }
 }
 

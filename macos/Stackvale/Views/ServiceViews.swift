@@ -224,6 +224,7 @@ struct ServiceDetailsView: View {
     @EnvironmentObject private var serviceManager: ServiceManager
     @Environment(\.dismiss) private var dismiss
     var service: ServiceDefinition
+    var projectName: String?
     var compact = false
     var onClose: (() -> Void)?
 
@@ -238,8 +239,9 @@ struct ServiceDetailsView: View {
         var label: String { self == .logs ? "Logs" : "Terminal" }
     }
 
-    init(service: ServiceDefinition, compact: Bool = false, onClose: (() -> Void)? = nil) {
+    init(service: ServiceDefinition, projectName: String? = nil, compact: Bool = false, onClose: (() -> Void)? = nil) {
         self.service = service
+        self.projectName = projectName
         self.compact = compact
         self.onClose = onClose
         _terminal = StateObject(wrappedValue: TerminalSession(workingDirectory: service.workingDirectoryURL))
@@ -247,12 +249,27 @@ struct ServiceDetailsView: View {
 
     var body: some View {
         let runtime = serviceManager.runtime(for: service.id)
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(spacing: 16) {
                 Image(systemName: service.displayIconCategory.symbolName)
-                Text(service.name)
-                    .font(.title2.weight(.semibold))
+                    .font(.system(size: 24))
+                    .frame(width: 46, height: 46)
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 13))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(service.displayIconCategory.label) · \(projectName ?? service.workingDirectoryURL.lastPathComponent)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text(service.name)
+                        .font(.system(size: 25, weight: .semibold))
+                }
                 Spacer()
+                Button("Open directory", systemImage: "folder") {
+                    NSWorkspace.shared.open(service.workingDirectoryURL)
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .help("Open working directory")
                 Button {
                     if runtime.status == .running {
                         Task { await serviceManager.stop(service) }
@@ -260,60 +277,42 @@ struct ServiceDetailsView: View {
                         Task { await serviceManager.start(service) }
                     }
                 } label: {
-                    Label(runtime.status == .running ? "Stop" : "Start", systemImage: runtime.status == .running ? "stop.fill" : "play.fill")
+                    Label(runtime.status == .running ? "Parar" : "Iniciar", systemImage: runtime.status == .running ? "stop.fill" : "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 .disabled(runtime.status.isTransitioning || runtime.status == .external)
-                if serviceManager.canKillLocalProcess(for: service) {
-                    Button("Kill process", systemImage: "xmark.octagon") {
-                        serviceManager.kill(service)
-                    }
-                    .buttonStyle(.bordered)
-                    .help("Kill the local process")
-                }
-                Button("Done") { close() }
             }
 
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                detailRow("Status", runtime.status.label)
-                detailRow("Type", service.kind.label)
-                detailRow("Source", service.source.label)
-                detailRow("Command", service.resolvedCommand)
-                detailRow("Directory", service.workingDirectory.abbreviatingHomeDirectory())
-                if let pid = runtime.pidOrContainerId {
-                    detailRow(service.kind == .dockerCompose ? "Container" : "PID", pid)
-                }
-                if let activePort = runtime.activePort {
-                    detailRow("Active port", String(activePort))
-                }
-                if let lastExitCode = runtime.lastExitCode {
-                    detailRow("Last exit", String(lastExitCode))
-                }
-                if let lastError = runtime.lastError, !lastError.isEmpty {
-                    detailRow("Last error", lastError)
-                }
+            HStack(spacing: 12) {
+                metadataCard("COMANDO", service.kind == .localCommand ? service.commandDisplay : service.resolvedCommand)
+                metadataCard("DIRETÓRIO", service.workingDirectory.abbreviatingHomeDirectory())
             }
 
-            Picker("Details panel", selection: $selectedPanel) {
-                ForEach(DetailsPanel.allCases) { panel in
-                    Text(panel.label).tag(panel)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("Atividade").font(.headline)
+                    Spacer()
+                    Label(runtime.status == .running ? "Em execução" : "Pronto para iniciar", systemImage: "circle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(runtime.status == .running ? .green : .secondary)
                 }
-            }
-            .pickerStyle(.segmented)
-
-            if selectedPanel == .logs {
+                .padding(16)
+                Divider()
                 ScrollView {
-                    Text(runtime.log.isEmpty ? "No logs captured yet." : runtime.log)
+                    Text(runtime.log.isEmpty ? "Nenhum processo em execução.\n\nInicie o serviço para acompanhar os logs aqui." : runtime.log)
                         .font(.system(.caption, design: .monospaced))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
+                        .padding(16)
                 }
-            } else {
-                TerminalPanelView(
-                    session: terminal,
-                    workingDirectory: service.workingDirectory,
-                    compact: compact
-                )
+            }
+            .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.separator))
+
+            if selectedPanel == .terminal {
+                TerminalPanelView(session: terminal, workingDirectory: service.workingDirectory, compact: compact)
             }
         }
         .onAppear {
@@ -329,8 +328,8 @@ struct ServiceDetailsView: View {
         .onDisappear {
             terminal.terminate()
         }
-        .padding(compact ? 16 : 20)
-        .frame(width: compact ? 430 : 620, height: 520)
+        .padding(compact ? 16 : 34)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func close() {
@@ -349,6 +348,23 @@ struct ServiceDetailsView: View {
                 .textSelection(.enabled)
                 .lineLimit(3)
         }
+    }
+
+    private func metadataCard(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .tracking(1)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(.body, design: .monospaced))
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.separator))
     }
 }
 

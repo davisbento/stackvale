@@ -129,8 +129,16 @@ final class StatusBarController: NSObject {
             let content = DashboardView()
                 .environmentObject(projectStore)
                 .environmentObject(serviceManager)
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                backing: .buffered,
+                defer: false
+            )
             window.title = "Stackvale"
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.appearance = NSAppearance(named: .darkAqua)
             window.isReleasedWhenClosed = false
             window.minSize = NSSize(width: 900, height: 600)
             window.contentViewController = NSHostingController(rootView: content)

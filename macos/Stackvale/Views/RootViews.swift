@@ -4,43 +4,213 @@ import AppKit
 struct DashboardView: View {
     @EnvironmentObject private var store: ProjectStore
     @EnvironmentObject private var serviceManager: ServiceManager
-    @State private var selectedService: ServiceDefinition?
-    private var services: [ServiceDefinition] { store.projects.flatMap(\.services).sorted { rank(serviceManager.runtime(for: $0.id).status) < rank(serviceManager.runtime(for: $1.id).status) } }
+    @State private var selectedServiceID: UUID?
+    @State private var presentation: DashboardPresentation = .detail
+
+    private var services: [ServiceDefinition] {
+        store.projects.flatMap(\.services).sorted {
+            rank(serviceManager.runtime(for: $0.id).status) < rank(serviceManager.runtime(for: $1.id).status)
+        }
+    }
+
+    private var selectedService: ServiceDefinition? {
+        guard let selectedServiceID else { return nil }
+        return services.first { $0.id == selectedServiceID }
+    }
+
     var body: some View {
-        NavigationSplitView {
-            List {
-                Section("All services") { Text("\(services.count) configured").foregroundStyle(.secondary) }
+        VStack(spacing: 0) {
+            HStack {
+                Image("StackvaleLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 28, height: 28)
+                Text("Stackvale")
+                    .font(.system(size: 22, weight: .semibold))
+                Spacer()
+                Button {
+                    Task { await serviceManager.refreshDockerStatuses(projects: store.projects) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .medium))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Refresh service statuses")
+                Button {
+                    presentation = presentation == .detail ? .overview : .detail
+                } label: {
+                    Image(systemName: presentation == .detail ? "square.grid.2x2" : "rectangle.leadinghalf.inset.filled")
+                        .font(.system(size: 15, weight: .medium))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(presentation.toggleLabel)
+            }
+            .padding(.leading, 120)
+            .padding(.trailing, 26)
+            .padding(.vertical, 14)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .overlay(alignment: .bottom) { Divider() }
+
+            NavigationSplitView {
+                sidebar
+                    .navigationSplitViewColumnWidth(310)
+            } detail: {
+                if let selectedService {
+                    switch presentation {
+                    case .detail:
+                        ServiceDetailsView(
+                            service: selectedService,
+                            projectName: store.projects.first { $0.id == selectedService.projectId }?.name
+                        )
+                            .environmentObject(serviceManager)
+                    case .overview:
+                        overview
+                    }
+                } else {
+                    ContentUnavailableView("Select a service", systemImage: "square.stack.3d.up")
+                }
+            }
+            .toolbar(removing: .sidebarToggle)
+            .toolbar(.hidden, for: .windowToolbar)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .task { await serviceManager.refreshDockerStatuses(projects: store.projects) }
+    }
+
+    private var sidebar: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("Serviços").font(.system(size: 16, weight: .semibold))
+                    Spacer()
+                    Text("\(services.count) configurados")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 20)
+
                 ForEach(IconCategory.allCases.filter { category in services.contains { $0.displayIconCategory == category } }) { category in
-                    Section(category.label) {
-                        ForEach(services.filter { $0.displayIconCategory == category }) { service in
-                            let runtime = serviceManager.runtime(for: service.id)
-                            HStack(spacing: 10) {
-                                Button { selectedService = service } label: { serviceRow(service) }
-                                    .buttonStyle(.plain)
-                                Button {
-                                    if runtime.status == .running {
-                                        Task { await serviceManager.stop(service) }
-                                    } else {
-                                        Task { await serviceManager.start(service) }
-                                    }
-                                } label: {
-                                    Image(systemName: runtime.status == .running ? "stop.fill" : "play.fill")
-                                }
-                                .buttonStyle(.borderless)
-                                .disabled(runtime.status.isTransitioning || runtime.status == .external)
-                                .help(runtime.status == .running ? "Stop" : "Start")
-                            }
+                    Text(category.label.uppercased())
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(1)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 14)
+                        .padding(.bottom, 8)
+
+                    ForEach(services.filter { $0.displayIconCategory == category }) { service in
+                        Button {
+                            selectedServiceID = service.id
+                            presentation = .detail
+                        } label: {
+                            serviceRow(service)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 9)
+                                .background(
+                                    selectedServiceID == service.id ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.18) : .clear,
+                                    in: RoundedRectangle(cornerRadius: 9)
+                                )
                         }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 8)
                     }
                 }
-            }.listStyle(.sidebar).navigationTitle("Stackvale")
-        } detail: {
-            if let selectedService { ServiceDetailsView(service: selectedService).environmentObject(serviceManager).frame(minWidth: 520, minHeight: 420) }
-            else { ContentUnavailableView("Select a service", systemImage: "square.stack.3d.up") }
-        }.toolbar { ToolbarItem { Button { Task { await serviceManager.refreshDockerStatuses(projects: store.projects) } } label: { Label("Refresh", systemImage: "arrow.clockwise") } } }.task { await serviceManager.refreshDockerStatuses(projects: store.projects) }
+            }
+            .padding(.vertical, 18)
+        }
+        .scrollIndicators(.hidden)
+        .background(Color(nsColor: .underPageBackgroundColor))
     }
-    private func serviceRow(_ service: ServiceDefinition) -> some View { let runtime = serviceManager.runtime(for: service.id); return HStack { Image(systemName: service.displayIconCategory.symbolName).frame(width: 18); VStack(alignment: .leading) { Text(service.name); Text(store.projects.first { $0.id == service.projectId }?.name ?? "Unknown project").font(.caption).foregroundStyle(.secondary) }; Spacer(); Image(systemName: runtime.status.statusSymbol).foregroundStyle(runtime.status.tint) } }
+
+    private func serviceRow(_ service: ServiceDefinition) -> some View {
+        let runtime = serviceManager.runtime(for: service.id)
+        return HStack(spacing: 12) {
+            Image(systemName: service.displayIconCategory.symbolName).frame(width: 18)
+            VStack(alignment: .leading) {
+                Text(service.name).font(.system(size: 14, weight: .semibold))
+                Text(store.projects.first { $0.id == service.projectId }?.name ?? "Unknown project")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Circle()
+                .fill(runtime.status.tint)
+                .frame(width: 8, height: 8)
+                .overlay(Circle().stroke(.black.opacity(0.2), lineWidth: 1))
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var overview: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 16)], spacing: 16) {
+                ForEach(services) { service in
+                    Button {
+                        selectedServiceID = service.id
+                        presentation = .detail
+                    } label: {
+                        ServiceOverviewCard(
+                            service: service,
+                            projectName: store.projects.first { $0.id == service.projectId }?.name ?? "Unknown project",
+                            runtime: serviceManager.runtime(for: service.id)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(24)
+        }
+    }
+
     private func rank(_ status: RuntimeStatus) -> Int { switch status { case .running: 0; case .starting, .stopping: 1; case .failed: 2; case .stopped, .external, .unknown: 3 } }
+}
+
+private enum DashboardPresentation: Equatable {
+    case detail
+    case overview
+
+    var toggleLabel: String { self == .detail ? "Show overview" : "Show detail" }
+    var toggleSymbol: String { self == .detail ? "square.grid.2x2" : "list.bullet" }
+}
+
+private struct ServiceOverviewCard: View {
+    let service: ServiceDefinition
+    let projectName: String
+    let runtime: ServiceRuntime
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: service.displayIconCategory.symbolName)
+                    .font(.title3)
+                Spacer()
+                Label(runtime.status.label, systemImage: runtime.status.statusSymbol)
+                    .font(.caption)
+                    .foregroundStyle(runtime.status.tint)
+            }
+            Text(service.name)
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(projectName)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Divider()
+            Text(service.resolvedCommand)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.separator))
+    }
 }
 
 // MARK: - Root UI
