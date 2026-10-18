@@ -138,6 +138,7 @@ final class StatusBarController: NSObject {
             window.title = "Stackvale"
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
+            window.toolbarStyle = .unifiedCompact
             window.appearance = NSAppearance(named: .darkAqua)
             window.isReleasedWhenClosed = false
             window.minSize = NSSize(width: 900, height: 600)

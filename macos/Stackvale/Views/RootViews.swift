@@ -21,12 +21,6 @@ struct DashboardView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Image("StackvaleLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 28, height: 28)
-                Text("Stackvale")
-                    .font(.system(size: 22, weight: .semibold))
                 Spacer()
                 Button {
                     Task { await serviceManager.refreshDockerStatuses(projects: store.projects) }
@@ -48,6 +42,14 @@ struct DashboardView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .help(presentation.toggleLabel)
+                HStack(spacing: 8) {
+                    Image("StackvaleLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 28, height: 28)
+                    Text("Stackvale")
+                        .font(.system(size: 22, weight: .semibold))
+                }
             }
             .padding(.leading, 120)
             .padding(.trailing, 26)
@@ -74,8 +76,6 @@ struct DashboardView: View {
                     ContentUnavailableView("Select a service", systemImage: "square.stack.3d.up")
                 }
             }
-            .toolbar(removing: .sidebarToggle)
-            .toolbar(.hidden, for: .windowToolbar)
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .task { await serviceManager.refreshDockerStatuses(projects: store.projects) }
