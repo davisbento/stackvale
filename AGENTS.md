@@ -6,5 +6,5 @@
 - Always use Conventional Commits for commit messages.
 - After every task that changes Swift, Xcode project settings, assets, or build-affecting files, run the build command: `make build`.
 - You do not need to run `make build` for changes that only touch docs or developer tooling files such as `Makefile`, unless the change can affect the app build.
-- For the macOS release and website download deployment process, read
-  [`docs/deploy.md`](docs/deploy.md).
+- For the macOS release process and public repository policy, read
+  [`README.md`](README.md).

@@ -25,18 +25,6 @@ jobs:
       - name: Build DMG
         run: make dmg
 
-      - name: Update website download
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add web/public/downloads/Stackvale.dmg
-          if git diff --cached --quiet; then
-            echo "DMG is unchanged"
-          else
-            git commit -m "chore: update website download"
-            git push origin HEAD:${{ github.event.repository.default_branch }}
-          fi
-
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
