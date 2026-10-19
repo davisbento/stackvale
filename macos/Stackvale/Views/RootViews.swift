@@ -274,7 +274,12 @@ struct StackvaleRootView: View {
             )
             .environmentObject(store)
         case .serviceDetails(let service):
-            ServiceDetailsView(service: service, compact: true, onClose: closeScreen)
+            ServiceDetailsView(
+                service: service,
+                projectName: store.projects.first { $0.id == service.projectId }?.name,
+                compact: true,
+                onClose: closeScreen
+            )
                 .environmentObject(serviceManager)
         case .rescan(let project):
             RescanProjectView(project: project, compact: true, onClose: closeScreen)

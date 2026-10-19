@@ -251,6 +251,15 @@ struct ServiceDetailsView: View {
         let runtime = serviceManager.runtime(for: service.id)
         VStack(alignment: .leading, spacing: 22) {
             HStack(spacing: 16) {
+                if compact {
+                    Button(action: close) {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .help("Back")
+                }
                 Image(systemName: service.displayIconCategory.symbolName)
                     .font(.system(size: 24))
                     .frame(width: 46, height: 46)
