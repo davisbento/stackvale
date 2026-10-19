@@ -28,7 +28,7 @@ dmg: release
 	rm -rf /tmp/stackvale-dmg/Stackvale.app
 	cp -R $(RELEASE_APP) /tmp/stackvale-dmg/Stackvale.app
 	hdiutil create -volname Stackvale -srcfolder /tmp/stackvale-dmg -ov -format UDZO $(DMG)
-	cp $(DMG) web/public/Stackvale.dmg
+	cp $(DMG) web/public/downloads/Stackvale.dmg
 	rm -rf /tmp/stackvale-dmg
 
 open: build

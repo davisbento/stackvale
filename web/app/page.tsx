@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-const downloadUrl = "https://github.com/davisbento/stackvale/releases/latest/download/Stackvale.dmg";
+const downloadUrl = "/downloads/Stackvale.dmg";
 
 const features = [
   ["One home for every project", "Keep repositories, services, and their context together instead of scattered across terminals."],
