@@ -39,10 +39,10 @@ struct ServiceDraft: Identifiable, Equatable {
                 resolvedArguments = commandArguments
             } else if commandExecutable == "/bin/zsh" && commandArguments.count == 2 && commandArguments.last == trimmedCommand {
                 resolvedExecutable = commandExecutable
-                resolvedArguments = commandArguments
+                resolvedArguments = ["-ilc", trimmedCommand]
             } else {
                 resolvedExecutable = "/bin/zsh"
-                resolvedArguments = ["-lc", trimmedCommand]
+                resolvedArguments = ["-ilc", trimmedCommand]
             }
         } else {
             resolvedExecutable = commandExecutable

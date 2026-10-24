@@ -70,7 +70,7 @@ enum NodeCommandEnvironment {
         fi
         . "$stackvale_nvm_script" --no-use || exit $?
         printf '%s\\n' \(shellQuote("[environment] Selecting Node \(version) (\(requirement.source))"))
-        nvm use --no-colors \(shellQuote(version)) || {
+        nvm use --silent \(shellQuote(version)) || {
             printf '%s\\n' \(shellQuote("[environment] Could not select Node \(version). Install it with nvm before starting this service.")) >&2
             exit 1
         }

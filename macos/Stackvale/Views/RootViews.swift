@@ -66,7 +66,8 @@ struct DashboardView: View {
                     case .detail:
                         ServiceDetailsView(
                             service: selectedService,
-                            projectName: store.projects.first { $0.id == selectedService.projectId }?.name
+                            projectName: store.projects.first { $0.id == selectedService.projectId }?.name,
+                            onClose: { presentation = .overview }
                         )
                             .environmentObject(serviceManager)
                     case .overview:
@@ -150,17 +151,25 @@ struct DashboardView: View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 16)], spacing: 16) {
                 ForEach(services) { service in
-                    Button {
-                        selectedServiceID = service.id
-                        presentation = .detail
-                    } label: {
-                        ServiceOverviewCard(
-                            service: service,
-                            projectName: store.projects.first { $0.id == service.projectId }?.name ?? "Unknown project",
-                            runtime: serviceManager.runtime(for: service.id)
-                        )
-                    }
-                    .buttonStyle(.plain)
+                    ServiceOverviewCard(
+                        service: service,
+                        projectName: store.projects.first { $0.id == service.projectId }?.name ?? "Unknown project",
+                        runtime: serviceManager.runtime(for: service.id),
+                        onOpen: {
+                            selectedServiceID = service.id
+                            presentation = .detail
+                        },
+                        onToggle: {
+                            let runtime = serviceManager.runtime(for: service.id)
+                            Task {
+                                if runtime.status == .running {
+                                    await serviceManager.stop(service)
+                                } else {
+                                    await serviceManager.start(service)
+                                }
+                            }
+                        }
+                    )
                 }
             }
             .padding(24)
@@ -182,19 +191,32 @@ private struct ServiceOverviewCard: View {
     let service: ServiceDefinition
     let projectName: String
     let runtime: ServiceRuntime
+    let onOpen: () -> Void
+    let onToggle: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: service.displayIconCategory.symbolName)
+                Button(action: onOpen) {
+                    Image(systemName: service.displayIconCategory.symbolName)
                     .font(.title3)
+                }
+                .buttonStyle(.plain)
                 Spacer()
                 Label(runtime.status.label, systemImage: runtime.status.statusSymbol)
                     .font(.caption)
                     .foregroundStyle(runtime.status.tint)
+                Button(action: onToggle) {
+                    Image(systemName: runtime.status == .running ? "pause.fill" : "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .help(runtime.status == .running ? "Pausar serviço" : "Iniciar serviço")
+                .disabled(runtime.status.isTransitioning || runtime.status == .external)
             }
-            Text(service.name)
+            Button(service.name, action: onOpen)
                 .font(.headline)
+                .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(projectName)
                 .font(.subheadline)
@@ -210,6 +232,8 @@ private struct ServiceOverviewCard: View {
         .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(.separator))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture(perform: onOpen)
     }
 }
 

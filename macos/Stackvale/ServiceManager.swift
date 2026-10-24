@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import Darwin
 
 // MARK: - Service Management
 
@@ -10,6 +11,7 @@ final class ServiceManager: ObservableObject {
 
     private var processes: [UUID: Process] = [:]
     private var readabilityHandlers: [UUID: [FileHandle]] = [:]
+    private var terminalHandles: [UUID: FileHandle] = [:]
     private let maxLogCharacters = 12_000
 
     func runtime(for serviceID: UUID) -> ServiceRuntime {
@@ -116,11 +118,23 @@ final class ServiceManager: ObservableObject {
         }
 
         let process = Process()
-        let environment = UserShellEnvironment.resolved()
+        var environment = UserShellEnvironment.resolved()
+        if environment["TERM"]?.isEmpty != false {
+            environment["TERM"] = "xterm-256color"
+        }
+        let shellArguments: [String]
+        if executable == "/bin/zsh", service.commandArguments.count == 2,
+           ["-c", "-lc"].contains(service.commandArguments[0]) {
+            // Shell-plugin setup (including 1Password) is normally loaded from
+            // .zshrc, which zsh only reads for an interactive shell.
+            shellArguments = ["-ilc", service.commandArguments[1]]
+        } else {
+            shellArguments = service.commandArguments
+        }
         do {
             let command = try NodeCommandEnvironment.launchCommand(
                 executable: executable,
-                arguments: service.commandArguments,
+                arguments: shellArguments,
                 workingDirectory: service.workingDirectoryURL,
                 environment: environment
             )
@@ -133,10 +147,17 @@ final class ServiceManager: ObservableObject {
         process.currentDirectoryURL = service.workingDirectoryURL
         process.environment = environment
 
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
+        var master: Int32 = -1
+        var slave: Int32 = -1
+        guard openpty(&master, &slave, nil, nil, nil) == 0 else {
+            setRuntime(service.id, status: .failed, lastError: "Could not create a pseudo-terminal.")
+            return
+        }
+        let terminalHandle = FileHandle(fileDescriptor: master, closeOnDealloc: true)
+        let slaveHandle = FileHandle(fileDescriptor: slave, closeOnDealloc: true)
+        process.standardInput = slaveHandle
+        process.standardOutput = slaveHandle
+        process.standardError = slaveHandle
 
         runtimes[service.id] = ServiceRuntime(
             serviceId: service.id,
@@ -148,15 +169,16 @@ final class ServiceManager: ObservableObject {
             log: "$ \(service.commandDisplay)\n"
         )
 
-        attachLogPipe(outputPipe.fileHandleForReading, service: service)
-        attachLogPipe(errorPipe.fileHandleForReading, service: service)
-        readabilityHandlers[service.id] = [outputPipe.fileHandleForReading, errorPipe.fileHandleForReading]
+        attachLogPipe(terminalHandle, service: service)
+        readabilityHandlers[service.id] = [terminalHandle]
+        terminalHandles[service.id] = terminalHandle
 
         process.terminationHandler = { [weak self] terminatedProcess in
             Task { @MainActor in
                 guard let self else { return }
                 self.readabilityHandlers[service.id]?.forEach { $0.readabilityHandler = nil }
                 self.readabilityHandlers.removeValue(forKey: service.id)
+                try? self.terminalHandles.removeValue(forKey: service.id)?.close()
                 self.processes.removeValue(forKey: service.id)
 
                 let exitCode = Int(terminatedProcess.terminationStatus)
@@ -183,6 +205,7 @@ final class ServiceManager: ObservableObject {
 
         do {
             try process.run()
+            slaveHandle.closeFile()
             processes[service.id] = process
             var runtime = runtime(for: service.id)
             runtime.pidOrContainerId = String(process.processIdentifier)
@@ -193,6 +216,11 @@ final class ServiceManager: ObservableObject {
             // reported a fatal boot error (for example, a missing Node module).
             waitForLocalCommandReadiness(service, process: process)
         } catch {
+            slaveHandle.closeFile()
+            terminalHandle.readabilityHandler = nil
+            try? terminalHandle.close()
+            terminalHandles.removeValue(forKey: service.id)
+            readabilityHandlers.removeValue(forKey: service.id)
             setRuntime(service.id, status: .failed, lastError: error.localizedDescription)
         }
     }
@@ -486,14 +514,40 @@ final class ServiceManager: ObservableObject {
                 guard runtime.status == .starting else { return }
                 guard runtime.lastError == nil else { return }
 
-                if self.hasStartupReadinessSignal(in: runtime.log, activePort: runtime.activePort) {
-                    var readyRuntime = runtime
+                var readyRuntime = runtime
+                // Log output can mention unrelated ports (for example, a proxy or
+                // another service). Once the process has a PID, ask the OS which
+                // listening socket belongs to that process and prefer that value.
+                if let processPort = await self.listeningPort(for: process.processIdentifier) {
+                    readyRuntime.activePort = processPort
+                }
+
+                if self.hasStartupReadinessSignal(in: readyRuntime.log, activePort: readyRuntime.activePort) {
                     readyRuntime.status = .running
                     self.runtimes[service.id] = readyRuntime
                     return
                 }
+
+                self.runtimes[service.id] = readyRuntime
             }
         }
+    }
+
+    private func listeningPort(for processIdentifier: Int32) async -> Int? {
+        let result = await CommandRunner.run(
+            executable: "/usr/sbin/lsof",
+            arguments: ["-nP", "-a", "-p", String(processIdentifier), "-iTCP", "-sTCP:LISTEN"],
+            workingDirectory: nil
+        )
+        guard result.exitCode == 0 else { return nil }
+
+        let pattern = #":(\d+)\s+\(LISTEN\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: result.output, range: NSRange(result.output.startIndex..<result.output.endIndex, in: result.output)),
+              let portRange = Range(match.range(at: 1), in: result.output),
+              let port = Int(result.output[portRange]),
+              (1...65535).contains(port) else { return nil }
+        return port
     }
 
     private func hasStartupReadinessSignal(in log: String, activePort: Int?) -> Bool {

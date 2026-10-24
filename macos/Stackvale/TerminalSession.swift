@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Darwin
 
 /// A small interactive shell session scoped to one service's working directory.
 @MainActor
@@ -9,8 +10,7 @@ final class TerminalSession: ObservableObject {
 
     private let workingDirectory: URL
     private var process: Process?
-    private var inputPipe: Pipe?
-    private var outputHandles: [FileHandle] = []
+    private var terminalHandle: FileHandle?
     private let maxOutputCharacters = 20_000
 
     init(workingDirectory: URL) {
@@ -28,28 +28,38 @@ final class TerminalSession: ObservableObject {
             return
         }
 
-        let process = Process()
-        let inputPipe = Pipe()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        var environment = UserShellEnvironment.resolved()
-        environment["TERM"] = "dumb"
-        environment["PS1"] = ""
-        environment["RPS1"] = ""
-        environment["PROMPT_EOL_MARK"] = ""
+        var master: Int32 = -1
+        var slave: Int32 = -1
+        guard openpty(&master, &slave, nil, nil, nil) == 0 else {
+            append("[error] Could not create a pseudo-terminal.\n")
+            return
+        }
 
+        let terminalHandle = FileHandle(fileDescriptor: master, closeOnDealloc: true)
+        let slaveHandle = FileHandle(fileDescriptor: slave, closeOnDealloc: true)
+        let process = Process()
+        var environment = UserShellEnvironment.resolved()
+        // Keep the user's terminal and prompt configuration. In particular, TERM=dumb
+        // disables prompt colors and can cause shell integrations (such as 1Password's
+        // shell plugin) to skip their interactive setup.
+        if environment["TERM"]?.isEmpty != false {
+            environment["TERM"] = "xterm-256color"
+        }
+
+        // Connect all three streams to the slave side of a real PTY. This makes
+        // zsh and interactive integrations (such as 1Password Shell Plugins)
+        // see an actual terminal, rather than an ordinary pipe.
         process.executableURL = URL(fileURLWithPath: shellPath)
         process.arguments = ["-il"]
         process.currentDirectoryURL = workingDirectory
         process.environment = environment
-        process.standardInput = inputPipe
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
+        process.standardInput = slaveHandle
+        process.standardOutput = slaveHandle
+        process.standardError = slaveHandle
 
         self.process = process
-        self.inputPipe = inputPipe
-        outputHandles = [outputPipe.fileHandleForReading, errorPipe.fileHandleForReading]
-        outputHandles.forEach { attachOutputHandler(to: $0) }
+        self.terminalHandle = terminalHandle
+        attachOutputHandler(to: terminalHandle)
 
         process.terminationHandler = { [weak self] _ in
             Task { @MainActor in
@@ -59,9 +69,19 @@ final class TerminalSession: ObservableObject {
 
         do {
             try process.run()
+            slaveHandle.closeFile()
             isRunning = true
             append("[shell: \(shellPath.abbreviatingHomeDirectory())] \(workingDirectory.path.abbreviatingHomeDirectory())\n")
+            // Some .zshrc files change directory while they initialize. Send
+            // this after startup has settled so the selected service directory
+            // is the final working directory visible to the user.
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled, let self, self.isRunning else { return }
+                self.write("cd -- \(Self.shellQuote(self.workingDirectory.path))\n")
+            }
         } catch {
+            slaveHandle.closeFile()
             finish()
             append("[error] Could not start shell: \(error.localizedDescription)\n")
         }
@@ -70,12 +90,20 @@ final class TerminalSession: ObservableObject {
     func send(_ command: String) {
         guard isRunning, !command.isEmpty else { return }
         append("$ \(command)\n")
-        guard let data = "\(command)\n".data(using: .utf8) else { return }
+        write("\(command)\n")
+    }
+
+    private func write(_ text: String) {
+        guard let data = text.data(using: .utf8) else { return }
         do {
-            try inputPipe?.fileHandleForWriting.write(contentsOf: data)
+            try terminalHandle?.write(contentsOf: data)
         } catch {
             append("[error] Could not send command: \(error.localizedDescription)\n")
         }
+    }
+
+    nonisolated private static func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     func terminate() {
@@ -86,7 +114,9 @@ final class TerminalSession: ObservableObject {
     private func attachOutputHandler(to handle: FileHandle) {
         handle.readabilityHandler = { [weak self] fileHandle in
             let data = fileHandle.availableData
-            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
+            guard !data.isEmpty, let rawChunk = String(data: data, encoding: .utf8) else { return }
+            let chunk = Self.removingANSISequences(from: rawChunk)
+            guard !chunk.isEmpty else { return }
             Task { @MainActor in
                 self?.append(chunk)
             }
@@ -94,9 +124,9 @@ final class TerminalSession: ObservableObject {
     }
 
     private func finish() {
-        outputHandles.forEach { $0.readabilityHandler = nil }
-        outputHandles.removeAll()
-        inputPipe = nil
+        terminalHandle?.readabilityHandler = nil
+        try? terminalHandle?.close()
+        terminalHandle = nil
         process = nil
         isRunning = false
     }
@@ -106,5 +136,17 @@ final class TerminalSession: ObservableObject {
         if output.count > maxOutputCharacters {
             output = "…" + String(output.suffix(maxOutputCharacters))
         }
+    }
+
+    nonisolated private static func removingANSISequences(from text: String) -> String {
+        // The UI is a text view, not a terminal emulator. Keep the readable
+        // prompt/output while avoiding raw escape sequences such as "[31m".
+        let escape = "\u{001B}"
+        let pattern = "\(escape)(?:\\[[0-?]*[ -/]*[@-~]|\\][^\u{0007}]*(?:\u{0007}|\(escape)\\\\))"
+        return text.replacingOccurrences(
+            of: pattern,
+            with: "",
+            options: .regularExpression
+        )
     }
 }

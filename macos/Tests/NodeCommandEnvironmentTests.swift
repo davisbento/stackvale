@@ -15,7 +15,7 @@ struct NodeCommandEnvironmentTests {
         try """
         nvm() {
             [ "$1" = use ] || return 1
-            [ "$2" = --no-colors ] || return 1
+            [ "$2" = --silent ] || return 1
             stackvale_test_version="${3#v}"
             case "$stackvale_test_version" in
                 22) stackvale_test_version=22.10.0 ;;

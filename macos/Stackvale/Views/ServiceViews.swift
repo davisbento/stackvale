@@ -166,7 +166,7 @@ struct ServiceEditorView: View {
                 workingDirectory: workingDirectory,
                 source: service?.source ?? .manual,
                 commandExecutable: "/bin/zsh",
-                commandArguments: ["-lc", command],
+                 commandArguments: ["-ilc", command],
                 commandDisplay: command,
                 composeFile: nil,
                 composeService: nil,
@@ -249,9 +249,10 @@ struct ServiceDetailsView: View {
 
     var body: some View {
         let runtime = serviceManager.runtime(for: service.id)
-        VStack(alignment: .leading, spacing: 22) {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 22) {
             HStack(spacing: 16) {
-                if compact {
+                if compact || onClose != nil {
                     Button(action: close) {
                         Label("Back", systemImage: "chevron.left")
                     }
@@ -264,14 +265,18 @@ struct ServiceDetailsView: View {
                     .font(.system(size: 24))
                     .frame(width: 46, height: 46)
                     .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 13))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("\(service.displayIconCategory.label) · \(projectName ?? service.workingDirectoryURL.lastPathComponent)")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text(service.name)
-                        .font(.system(size: 25, weight: .semibold))
-                }
-                Spacer()
+                 VStack(alignment: .leading, spacing: 3) {
+                     Text("\(service.displayIconCategory.label) · \(projectName ?? service.workingDirectoryURL.lastPathComponent)")
+                         .font(.system(size: 12))
+                         .foregroundStyle(.secondary)
+                         .lineLimit(2)
+                     Text(service.name)
+                         .font(.system(size: 25, weight: .semibold))
+                         .lineLimit(2)
+                         .minimumScaleFactor(0.75)
+                 }
+                 .frame(minWidth: 140, alignment: .leading)
+                 Spacer()
                 Button("Open directory", systemImage: "folder") {
                     NSWorkspace.shared.open(service.workingDirectoryURL)
                 }
@@ -279,24 +284,39 @@ struct ServiceDetailsView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.large)
                 .help("Open working directory")
-                Button {
-                    if runtime.status == .running {
-                        Task { await serviceManager.stop(service) }
+                 Button {
+                     if runtime.status == .running {
+                         Task { await serviceManager.stop(service) }
                     } else {
                         Task { await serviceManager.start(service) }
                     }
-                } label: {
-                    Label(runtime.status == .running ? "Parar" : "Iniciar", systemImage: runtime.status == .running ? "stop.fill" : "play.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(runtime.status.isTransitioning || runtime.status == .external)
-            }
+                 } label: {
+                     Label(runtime.status == .running ? "Parar" : "Iniciar", systemImage: runtime.status == .running ? "stop.fill" : "play.fill")
+                 }
+                 .labelStyle(.iconOnly)
+                 .buttonStyle(.borderedProminent)
+                 .controlSize(.large)
+                 .help(runtime.status == .running ? "Parar serviço" : "Iniciar serviço")
+                 .disabled(runtime.status.isTransitioning || runtime.status == .external)
+                 if runtime.pidOrContainerId != nil && service.kind == .localCommand {
+                     Button("Kill process", systemImage: "xmark.octagon.fill") {
+                         serviceManager.kill(service)
+                     }
+                     .buttonStyle(.bordered)
+                     .labelStyle(.iconOnly)
+                     .controlSize(.large)
+                     .tint(.red)
+                     .help("Force the local process to stop")
+                 }
+             }
 
-            HStack(spacing: 12) {
-                metadataCard("COMANDO", service.kind == .localCommand ? service.commandDisplay : service.resolvedCommand)
-                metadataCard("DIRETÓRIO", service.workingDirectory.abbreviatingHomeDirectory())
-            }
+             LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 12)], spacing: 12) {
+                 metadataCard("COMANDO", service.kind == .localCommand ? service.commandDisplay : service.resolvedCommand)
+                 metadataCard("DIRETÓRIO", service.workingDirectory.abbreviatingHomeDirectory())
+                 if let pid = runtime.pidOrContainerId, service.kind == .localCommand {
+                     metadataCard("PROCESS ID", pid)
+                 }
+             }
 
             Picker("Painel de detalhes", selection: $selectedPanel) {
                 ForEach(DetailsPanel.allCases) { panel in
@@ -329,10 +349,12 @@ struct ServiceDetailsView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(.separator))
             }
 
-            if selectedPanel == .terminal {
-                TerminalPanelView(session: terminal, workingDirectory: service.workingDirectory, compact: compact)
+             if selectedPanel == .terminal {
+                 TerminalPanelView(session: terminal, workingDirectory: service.workingDirectory, compact: compact)
+             }
             }
-        }
+            .padding(.bottom, 16)
+         }
         .onAppear {
             if selectedPanel == .terminal {
                 terminal.start()
