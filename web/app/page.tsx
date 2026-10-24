@@ -14,7 +14,7 @@ export default function Home() {
       <nav className="nav"><a className="brand" href="#top"><Image src="/stackvale-icon.png" alt="" width={36} height={36} /> <span>stackvale</span></a><a className="nav-link" href="#features">How it works</a></nav>
       <section className="hero" id="top">
         <div className="hero-copy"><p className="eyebrow">A calmer local workspace</p><h1>Every project<br /><em>has its place.</em></h1><p className="lede">Stackvale brings your projects and local services into one focused macOS app, so you can spend less time managing your setup and more time building.</p><a className="button" href={downloadUrl}>Download for macOS <span>↗</span></a><p className="caption">Free while in early access · Apple Silicon & Intel</p></div>
-        <div className="hero-art"><Image src="/stackvale-logo.png" alt="Stackvale mountain logo" width={640} height={640} priority /></div>
+        <div className="hero-art"><Image src="/stackvale-app-preview.png" alt="Stackvale showing a project and its local services" width={1133} height={1388} priority /></div>
       </section>
       <section className="manifesto"><p className="eyebrow">Built for the way you work</p><h2>Your tools should feel<br /><em>like a place,</em> not a puzzle.</h2></section>
       <section className="features" id="features">{features.map(([title, text], index) => <article className="feature" key={title}><span>0{index + 1}</span><h3>{title}</h3><p>{text}</p></article>)}</section>
