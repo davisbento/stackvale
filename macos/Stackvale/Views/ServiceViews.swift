@@ -291,12 +291,12 @@ struct ServiceDetailsView: View {
                         Task { await serviceManager.start(service) }
                     }
                  } label: {
-                     Label(runtime.status == .running ? "Parar" : "Iniciar", systemImage: runtime.status == .running ? "stop.fill" : "play.fill")
+                      Label(runtime.status == .running ? "Stop" : "Start", systemImage: runtime.status == .running ? "stop.fill" : "play.fill")
                  }
                  .labelStyle(.iconOnly)
                  .buttonStyle(.borderedProminent)
                  .controlSize(.large)
-                 .help(runtime.status == .running ? "Parar serviço" : "Iniciar serviço")
+                  .help(runtime.status == .running ? "Stop service" : "Start service")
                  .disabled(runtime.status.isTransitioning || runtime.status == .external)
                  if runtime.pidOrContainerId != nil && service.kind == .localCommand {
                      Button("Kill process", systemImage: "xmark.octagon.fill") {
@@ -312,13 +312,13 @@ struct ServiceDetailsView: View {
 
              LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 12)], spacing: 12) {
                  metadataCard("COMANDO", service.kind == .localCommand ? service.commandDisplay : service.resolvedCommand)
-                 metadataCard("DIRETÓRIO", service.workingDirectory.abbreviatingHomeDirectory())
+                  metadataCard("DIRECTORY", service.workingDirectory.abbreviatingHomeDirectory())
                  if let pid = runtime.pidOrContainerId, service.kind == .localCommand {
                      metadataCard("PROCESS ID", pid)
                  }
              }
 
-            Picker("Painel de detalhes", selection: $selectedPanel) {
+             Picker("Details panel", selection: $selectedPanel) {
                 ForEach(DetailsPanel.allCases) { panel in
                     Text(panel.label).tag(panel)
                 }
@@ -328,16 +328,16 @@ struct ServiceDetailsView: View {
             if selectedPanel == .logs {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Text("Atividade").font(.headline)
+                         Text("Activity").font(.headline)
                         Spacer()
-                        Label(runtime.status == .running ? "Em execução" : "Pronto para iniciar", systemImage: "circle.fill")
+                         Label(runtime.status == .running ? "Running" : "Ready to start", systemImage: "circle.fill")
                             .font(.subheadline)
                             .foregroundStyle(runtime.status == .running ? .green : .secondary)
                     }
                     .padding(16)
                     Divider()
                     ScrollView {
-                        Text(runtime.log.isEmpty ? "Nenhum processo em execução.\n\nInicie o serviço para acompanhar os logs aqui." : runtime.log)
+                         Text(runtime.log.isEmpty ? "No process is running.\n\nStart the service to follow its logs here." : runtime.log)
                             .font(.system(.caption, design: .monospaced))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)

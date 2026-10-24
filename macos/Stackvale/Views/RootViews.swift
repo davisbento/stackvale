@@ -86,9 +86,9 @@ struct DashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("Serviços").font(.system(size: 16, weight: .semibold))
+                    Text("Services").font(.system(size: 16, weight: .semibold))
                     Spacer()
-                    Text("\(services.count) configurados")
+                    Text("\(services.count) configured")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
@@ -211,7 +211,7 @@ private struct ServiceOverviewCard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
-                .help(runtime.status == .running ? "Pausar serviço" : "Iniciar serviço")
+                .help(runtime.status == .running ? "Stop service" : "Start service")
                 .disabled(runtime.status.isTransitioning || runtime.status == .external)
             }
             Button(service.name, action: onOpen)
